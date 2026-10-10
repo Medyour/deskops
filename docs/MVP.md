@@ -1,0 +1,142 @@
+# DeskOps — contrat du MVP
+
+## Produit et périmètre
+
+DeskOps est un mini-centre de support **interne**, destiné à une petite équipe. Il démontre l’authentification, les autorisations, un workflow métier explicite et sa traçabilité. Le client est un contact du ticket, sans compte ni portail.
+
+**Étape 1 livrée :** vitrine, connexion/déconnexion, session persistante optionnelle, récupération et confirmation du mot de passe, deux rôles, espaces protégés, trois comptes locaux, outillage et tests. Le tableau de bord actuel est un écran d’accueil sans indicateurs métier.
+
+**MVP à construire :** tickets, assignation, transitions, commentaires internes, historique, liste filtrable et indicateurs. Aucune table métier de tickets n’est créée dans les fondations.
+
+Hors périmètre : inscription publique, gestion graphique des comptes/rôles, portail client, e-mail entrant ou sortant des tickets, pièces jointes, SLA, notifications métier, chat, temps réel, API publique, multi-tenant, suppression de tickets et automatisation des statuts. La récupération d’accès utilise le transport mail local de Laravel.
+
+## Identité et autorisations
+
+Deux valeurs de rôle persistées : `admin` (administrateur) et `agent` (agent). Le rôle par défaut est agent. Le rôle est exclu des attributs assignables depuis une requête et contrôlé par la base. Le serveur vérifie les permissions, même si un lien ou un bouton est masqué.
+
+| Opération                                           | Administrateur                  | Agent                                       |
+| --------------------------------------------------- | ------------------------------- | ------------------------------------------- |
+| Lire/rechercher tous les tickets et leur historique | Oui                             | Oui                                         |
+| Créer un ticket                                     | Oui                             | Oui                                         |
+| Modifier titre, description, contact ou priorité    | Tout ticket non fermé           | Ticket qui lui est assigné, non fermé       |
+| Ajouter un commentaire interne                      | Tout ticket non fermé           | Ticket qui lui est assigné, non fermé       |
+| Assigner/réassigner/libérer un ticket               | Oui, sous les règles ci-dessous | Non                                         |
+| Prendre un ticket non assigné                       | Oui, en l’assignant à un agent  | Oui, uniquement à soi                       |
+| Changer le statut                                   | Tout ticket, selon le graphe    | Ticket qui lui est assigné, selon le graphe |
+| Fermer un ticket résolu / rouvrir un ticket fermé   | Oui                             | Non                                         |
+| Consulter le tableau de bord global                 | Oui                             | Oui, avec vue « Mes tickets »               |
+| Accéder à l’espace administration                   | Oui                             | Non                                         |
+
+Un administrateur n’est pas un agent assignable. La création produit toujours un ticket nouveau et non assigné ; le formulaire de création n’accepte ni rôle, ni statut, ni auteur imposés par le navigateur. Un agent doit ensuite prendre le ticket pour le modifier. L’auteur de création n’a aucun privilège permanent sur celui-ci.
+
+## Tickets et stockage prévu
+
+| Entité              | Champs et règles                                                                                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tickets`           | `id`, `title` (5–160 caractères), `description` (10–10 000), `requester_name` (2–120), `requester_email` (adresse valide, max. 254), `status`, `priority`, `created_by`, `assigned_to` nullable, `resolved_at` nullable, `closed_at` nullable, timestamps UTC |
+| `comments`          | `id`, `ticket_id`, `author_id`, `body` (1–5 000 caractères non blancs), `created_at`                                                                                                                                                                          |
+| `ticket_activities` | `id`, `ticket_id`, `actor_id`, `type`, `changes` JSON, `reason` nullable (5–500 caractères lorsqu’exigé), `created_at`                                                                                                                                        |
+
+Référence affichée : `DS-0001`, calculée à partir de l’identifiant entier (au moins quatre chiffres ; reste unique après 9999). Le contact est dénormalisé sur le ticket : pas de modèle Client à ce stade. Les textes sont stockés comme texte brut et échappés à l’affichage ; ni HTML, ni Markdown interprété.
+
+Clés étrangères vers les utilisateurs et tickets avec suppression restreinte. Les comptes ne sont pas supprimés dans le MVP. Index : statut/date, priorité/date, agent/statut, activités et commentaires par ticket/date/id. Pas de moteur de recherche externe.
+
+## Statuts et transitions
+
+| Valeur             | Libellé              | Sens                                |
+| ------------------ | -------------------- | ----------------------------------- |
+| `new`              | Nouveau              | Reçu, pas encore pris en charge     |
+| `in_progress`      | En cours             | Un agent traite la demande          |
+| `waiting_customer` | En attente du client | L’équipe attend une information     |
+| `resolved`         | Résolu               | Une solution a été apportée         |
+| `closed`           | Fermé                | L’administrateur clôture le dossier |
+
+| Départ               | Arrivée autorisée    | Condition supplémentaire                         |
+| -------------------- | -------------------- | ------------------------------------------------ |
+| Nouveau              | En cours             | Un agent doit être assigné                       |
+| En cours             | En attente du client | Motif obligatoire                                |
+| En cours             | Résolu               | Résumé de résolution obligatoire                 |
+| En attente du client | En cours             | Aucune                                           |
+| En attente du client | Résolu               | Résumé de résolution obligatoire                 |
+| Résolu               | En cours             | Motif de réouverture obligatoire                 |
+| Résolu               | Fermé                | Administrateur uniquement                        |
+| Fermé                | En cours             | Administrateur, motif obligatoire, agent assigné |
+
+Toute autre transition est refusée, y compris un passage direct de Nouveau à Résolu. Répéter le statut actuel est une opération sans effet et sans activité. Les motifs sont enregistrés dans l’activité correspondante.
+
+Passage à Résolu : renseigner `resolved_at`. Passage à Fermé : conserver `resolved_at`, renseigner `closed_at`. Toute réouverture : vider ces deux dates. Les tickets fermés sont en lecture seule jusqu’à leur réouverture. Il n’existe ni suppression ni fermeture automatique.
+
+## Priorités et assignation
+
+Priorités : `low` (Basse), `normal` (Normale, par défaut), `high` (Haute), `urgent` (Urgente). Elles donnent un ordre de traitement sans déclencher un SLA. Pas de priorité calculée ou de délai implicite.
+
+Un ticket a zéro ou un agent assigné. Seuls des utilisateurs au rôle agent peuvent être choisis. Nouveau peut être assigné ou non. En cours, En attente du client et Résolu exigent un agent assigné. Libérer l’assignation n’est possible qu’à l’état Nouveau. Changer d’agent ne modifie pas le statut. Un ticket fermé garde son dernier agent et ne peut être réassigné avant sa réouverture.
+
+La prise en charge est atomique : si deux agents réclament un même ticket, une seule opération réussit, l’autre reçoit un conflit explicite (HTTP 409). La vérification du statut/de l’assignation et l’écriture de l’activité s’effectuent dans la même transaction. Utiliser une écriture conditionnelle sur les valeurs courantes pour SQLite ; ne pas compter sur un verrou de ligne absent de SQLite.
+
+## Commentaires et historique
+
+Les commentaires sont internes et visibles par toute l’équipe. Leur auteur et leur date viennent du serveur. Ils sont immuables : ni édition, ni suppression. Aucun e-mail n’est envoyé au client.
+
+Une activité est ajoutée pour chaque création, modification des champs métier, changement de priorité, assignation, transition et commentaire ajouté. Types : `ticket_created`, `ticket_updated`, `priority_changed`, `assignment_changed`, `status_changed`, `comment_added`. Les valeurs avant/après sont stockées, ainsi que l’acteur. Un commentaire est référencé par son identifiant dans l’activité ; son texte n’est pas dupliqué. Aucun mot de passe, token ou contenu de session n’entre dans l’historique.
+
+Une commande qui change plusieurs catégories produit une activité par catégorie, dans une transaction unique. Une opération sans changement n’ajoute rien. La chronologie est ordonnée par `created_at` puis `id`. Les tests doivent prouver qu’une opération refusée ne laisse ni modification ni activité.
+
+## Recherche et filtres
+
+Liste paginée par 20, nouveaux tickets d’abord (`created_at DESC, id DESC`). Recherche `q` (0–100 caractères, espaces externes retirés) sur référence exacte, titre, nom et e-mail du contact. La recherche de référence est insensible à la casse. Pour les textes, recherche par sous-chaîne avec la casse ASCII de SQLite ; la recherche sans accents n’est pas promise dans le MVP. Les caractères `%` et `_` sont traités littéralement, pas comme jokers SQL.
+
+Filtres GET combinables avec un ET : `status`, `priority`, `assignee` (id d’agent, `me`, `unassigned`). Les valeurs inconnues sont rejetées avec une erreur de validation ; elles ne disparaissent pas silencieusement. Les paramètres restent dans l’URL et dans les liens de pagination. Un bouton « Réinitialiser » efface les filtres. Afficher le nombre de résultats et un état vide utile. Aucun tri ou recherche côté navigateur nécessaire.
+
+## Tableau de bord métier
+
+Les métriques couvrent tous les tickets accessibles. La vue optionnelle « Mes tickets » applique `assigned_to = utilisateur courant` pour un agent. Aucun pourcentage de performance individuel.
+
+- **À traiter** : Nouveau + En cours + En attente du client.
+- **Non assignés** : tickets à traiter sans agent.
+- **Urgents actifs** : tickets à traiter de priorité Urgente.
+- **Résolus sur 7 jours** : statut actuel Résolu ou Fermé, `resolved_at >= maintenant - 7 jours` et `<= maintenant` ; bornes incluses.
+- Répartition par statut et charge par agent : nombre de tickets à traiter par agent ; file non assignée séparée.
+- Cinq dernières activités avec lien vers le ticket.
+
+Les heures sont stockées en UTC et affichées en Europe/Paris. Les tests figent l’horloge. Le jeu de démonstration conserve ses dates fixes : les métriques temporelles évoluent naturellement avec la date réelle, ce qui est explicité dans la démo. Un mini-graphe Vue n’est ajouté que si sa sélection/interaction apporte quelque chose que le HTML ne couvre pas.
+
+## Données de démonstration
+
+**Disponible aujourd’hui :** Camille Martin (`admin@deskops.example`), Alex Bernard (`alex@deskops.example`) et Sam Dubois (`sam@deskops.example`). Un administrateur, deux agents. Date d’identité fixe : 15 janvier 2026 à 09:00 UTC. Le seeder est idempotent et conserve les mots de passe existants.
+
+La commande locale `php artisan deskops:demo` prépare ces comptes et génère un mot de passe distinct par compte, affiché une seule fois dans le terminal. Elle révoque leurs sessions, cookies de connexion persistante et liens de réinitialisation précédents. Aucune valeur secrète n’est versionnée. La commande refuse tout environnement autre que local ; le seeder refuse les environnements autres que local/testing. La stabilité des données métier n’exige pas des hashes ou des mots de passe identiques.
+
+**Fixture métier prévue pour l’étape tickets :**
+
+| Référence | Sujet                    | Statut               | Priorité | Agent |
+| --------- | ------------------------ | -------------------- | -------- | ----- |
+| DS-0001   | Accès au compte client   | Nouveau              | Normale  | —     |
+| DS-0002   | Demande de facture       | Nouveau              | Basse    | —     |
+| DS-0003   | Service indisponible     | Nouveau              | Urgente  | —     |
+| DS-0004   | Export des contacts      | En cours             | Normale  | Alex  |
+| DS-0005   | Paiement refusé          | En cours             | Haute    | Sam   |
+| DS-0006   | Adresse de livraison     | En cours             | Basse    | Alex  |
+| DS-0007   | Import incomplet         | En cours             | Haute    | Sam   |
+| DS-0008   | Justificatif manquant    | En attente du client | Normale  | Alex  |
+| DS-0009   | Informations de commande | En attente du client | Normale  | Sam   |
+| DS-0010   | Double notification      | Résolu               | Normale  | Alex  |
+| DS-0011   | Erreur de connexion      | Résolu               | Haute    | Sam   |
+| DS-0012   | Mise à jour du profil    | Fermé                | Basse    | Alex  |
+
+Reconstruction sur une base de démonstration neuve uniquement : identifiants 1–12, aucun Faker aléatoire. Pour le ticket numéro N, création par Camille à `2026-01-15 09:00 UTC + (N-1) × 30 minutes`, contact `Client N` / `clientN@deskops.example`, description `Demande de démonstration : {sujet}. Merci de vérifier et de proposer une solution.`
+
+Pour les tickets non nouveaux : assignation à +1 minute, passage à En cours à +2 minutes, puis En attente/Résolu à +3 minutes, Fermé à +7 minutes si applicable. Les transitions initiales sont effectuées par Camille avec le motif fixe `Scénario de démonstration` lorsque nécessaire. Commentaires à +5 minutes (Camille : `Demande enregistrée dans le support.`) et +6 minutes (agent assigné, sinon Camille : `Suivi de démonstration ajouté.`), avant l’éventuelle fermeture pour respecter la lecture seule.
+
+Résultat attendu : 12 tickets, 24 commentaires, 60 activités (12 créations + 9 assignations + 15 transitions + 24 commentaires). Avec horloge figée au 20 janvier 2026 à 12:00 UTC : 9 à traiter, 3 non assignés, 1 urgent actif, 3 résolus sur 7 jours ; charges Alex 3 / Sam 3 / file non assignée 3. Le futur reset sera explicite et réservé à une base locale jetable, jamais exécuté automatiquement à l’installation.
+
+## Critères d’acceptation du MVP
+
+1. Les rôles et les droits sont vérifiés sur chaque mutation, avec tests positifs et négatifs.
+2. Un ticket peut être créé, pris en charge, commenté, mis en attente, résolu puis fermé conformément au graphe.
+3. Une transition invalide, une assignation à un administrateur ou une mutation de ticket fermé échoue sans écriture partielle.
+4. Chaque mutation effective produit les activités attendues, avec auteur et valeurs avant/après.
+5. Deux prises en charge concurrentes ne peuvent pas écraser l’agent gagnant.
+6. Recherche, filtres, pagination, états vides et métriques correspondent au contrat.
+7. Recréer la fixture donne les mêmes données et métriques à horloge figée.
+8. Les parcours restent utilisables au clavier, sur mobile et sans JavaScript ; le contrôle qualité local est vert.

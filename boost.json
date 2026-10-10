@@ -1,0 +1,7 @@
+{
+    "agents": [
+        "codex"
+    ],
+    "guidelines": true,
+    "mcp": false
+}
