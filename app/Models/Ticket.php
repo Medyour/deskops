@@ -45,7 +45,7 @@ class Ticket extends Model
             $query->where(function (Builder $searchQuery) use ($referenceId, $literal): void {
                 $searchQuery->where('id', $referenceId);
                 foreach (['title', 'requester_name', 'requester_email'] as $field) {
-                    $searchQuery->orWhereRaw('LOWER('.$field.") LIKE LOWER(?) ESCAPE '\\'", [$literal]);
+                    $searchQuery->orWhereRaw('LOWER('.$field.') LIKE LOWER(?) ESCAPE ?', [$literal, '\\']);
                 }
             });
         }

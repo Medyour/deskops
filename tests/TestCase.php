@@ -42,6 +42,7 @@ abstract class TestCase extends BaseTestCase
         $configuration = $postgres
             ? [...DB::connection()->getConfig(), 'url' => null, 'search_path' => $schema]
             : [...config('database.connections.sqlite'), 'database' => $path, 'url' => null, 'busy_timeout' => 1];
+        unset($configuration['name']);
         foreach ($names as $name) {
             config(['database.connections.'.$name => $configuration]);
         }
