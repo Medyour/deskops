@@ -4,11 +4,11 @@
 
 DeskOps est un mini-centre de support client pour une petite équipe. Ce projet vitrine démontrera des accès par rôle, un workflow de tickets, des règles métier testées, une chronologie d’activité et un tableau de bord.
 
-## État actuel — fondations et CI
+## État actuel — fondations, CI et cœur métier des tickets
 
 Les fondations sont prêtes : vitrine responsive, connexion/déconnexion, « se souvenir de moi », récupération et confirmation du mot de passe, rôles **administrateur** et **agent**, espaces protégés et comptes de démonstration locaux.
 
-Les tickets, commentaires, filtres et indicateurs métier sont **cadrés mais pas développés**. L’espace équipe présente clairement les prochaines fonctionnalités. Aucune inscription publique.
+Le cœur métier des tickets est disponible : création, assignation/réassignation, transitions contrôlées, permissions, conflits de version et historique transactionnel immuable. Les commentaires disposent d’une action interne et servent la fixture de démonstration. Les pages et formulaires complets des tickets, l’édition des champs/priorités, les filtres et les indicateurs restent à construire. Aucune inscription publique.
 
 Le contrat complet se trouve dans [docs/MVP.md](docs/MVP.md), les choix de structure dans [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -36,7 +36,7 @@ php artisan deskops:demo
 
 `setup` installe les dépendances verrouillées, crée `.env` s’il manque, génère la clé applicative seulement si elle manque, crée le fichier SQLite, applique les migrations puis construit les assets. Il ne supprime aucune base et ne renouvelle aucune clé existante.
 
-`deskops:demo` crée/met à jour les trois identités de démonstration, affiche de nouveaux mots de passe aléatoires et révoque leurs anciennes sessions/liens de récupération. Relancer cette commande renouvelle les accès. Les mots de passe ne sont pas enregistrés en clair dans un fichier et ne sont pas fournis dans le dépôt.
+`deskops:demo` crée/met à jour les trois identités de démonstration, initialise **12 tickets, 24 commentaires et 60 activités** sur une base de tickets neuve, affiche de nouveaux mots de passe aléatoires et révoque leurs anciennes sessions/liens de récupération. Relancer cette commande renouvelle les accès et conserve les mutations de tickets, les ajouts et l’historique. Les mots de passe ne sont pas enregistrés en clair dans un fichier et ne sont pas fournis dans le dépôt.
 
 | Compte                  | Rôle           |
 | ----------------------- | -------------- |
@@ -45,6 +45,14 @@ php artisan deskops:demo
 | `sam@deskops.example`   | Agent          |
 
 `php artisan db:seed` est idempotent et conserve les mots de passe existants ; pour obtenir des identifiants utilisables, lancer la commande de démonstration. Ces données n’utilisent aucune identité réelle. Le seed est réservé à local/testing ; la commande est réservée à local.
+
+Si des tickets étrangers à la fixture existent, si la fixture est partielle ou si ses identifiants ont déjà été utilisés, le seed refuse l’initialisation sans écraser de données. La commande n’effectue alors aucune rotation des accès. Aucun reset automatique n’est prévu. Les dates métier sont fixes au 15 janvier 2026 en UTC ; elles ne sont pas recalées sur la date du jour.
+
+### Contrat des mutations
+
+Les actions de `app/Actions/Tickets` centralisent validation, autorisation, transaction et activité. La référence `DS-0001` dérive de la clé primaire SQLite et reste unique au-delà de quatre chiffres. Les mutations transmettent la version observée du ticket ; une version obsolète ou un verrou SQLite entraîne un conflit HTTP 409, sans écriture partielle. Les répétitions autorisées à jour sont sans effet.
+
+Trois routes web protégées par session et CSRF préparent les futurs formulaires : `POST /tickets`, `PATCH /tickets/{ticket}/assignment` et `PATCH /tickets/{ticket}/status`. Les contrôleurs délèguent aux actions et redirigent vers l’espace équipe. Les commentaires restent accessibles par action interne à ce stade. Le graphe, les motifs obligatoires et les permissions détaillées sont définis dans [le contrat du MVP](docs/MVP.md).
 
 ### Ouvrir l’application
 
@@ -101,7 +109,7 @@ Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) exécute l’
 
 Les actions sont épinglées par SHA. Le jeton automatique GitHub est limité à la lecture du dépôt, sans persistance des identifiants Git. Seuls les caches de téléchargement Composer/npm sont réutilisés ; ni `vendor`, ni `node_modules`, ni `.env`, ni base SQLite ne sont mis en cache. Aucun secret GitHub supplémentaire ni étape de déploiement ne sont nécessaires.
 
-Le badge ci-dessus vise `main` et reflétera la CI de cette branche après fusion du workflow. La PR brouillon dispose de ses propres contrôles. Pour ce dépôt privé, le badge est consultable par les personnes autorisées.
+Le badge ci-dessus vise `main`. Chaque PR dispose de ses propres contrôles. Pour ce dépôt privé, le badge est consultable par les personnes autorisées.
 
 Commandes ciblées :
 
@@ -116,33 +124,38 @@ composer audit
 npm audit
 ```
 
-Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale. Ils couvrent les accès, les deux rôles, les refus de privilèges, CSRF, la limitation de connexion, la rotation de session, la récupération du mot de passe et les comptes de démo. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
+Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; les tests de concurrence et de migrations utilisent des fichiers SQLite temporaires supprimés après les tests. Ils couvrent l’authentification et les rôles, les transitions autorisées/interdites, les entrées invalides, l’assignation, les versions obsolètes, les verrous SQLite, le rollback de l’historique, les contraintes SQL, la réversibilité des migrations et l’idempotence de la fixture. Les tests Unit couvrent le graphe complet des statuts. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
 
 ## Fichiers à connaître
 
-| Emplacement                                    | Responsabilité                              |
-| ---------------------------------------------- | ------------------------------------------- |
-| `routes/web.php`                               | Vitrine et espaces protégés                 |
-| `app/Enums/UserRole.php`                       | Rôles typés                                 |
-| `app/Models/User.php`                          | Utilisateur et casts                        |
-| `app/Providers/FortifyServiceProvider.php`     | Authentification et vues                    |
-| `app/Providers/AppServiceProvider.php`         | Gate et politique de mot de passe           |
-| `config/fortify.php`                           | Fonctionnalités d’authentification activées |
-| `database/migrations`                          | Schéma initial et contrainte de rôle        |
-| `database/seeders/DemoUserSeeder.php`          | Identités déterministes                     |
-| `app/Console/Commands/PrepareDemoAccounts.php` | Préparation des accès locaux                |
-| `resources/views`                              | Vitrine, formulaires et espaces équipe      |
-| `tests/Feature`                                | Scénarios HTTP, sécurité et démonstration   |
-| `composer.json`, `package.json`                | Scripts de développement et de qualité      |
-| `.github/workflows/ci.yml`                     | CI GitHub Actions                           |
-| `.node-version`, `.composer-version`           | Versions des outils de développement et CI  |
+| Emplacement                                                  | Responsabilité                                               |
+| ------------------------------------------------------------ | ------------------------------------------------------------ |
+| `routes/web.php`                                             | Vitrine, espaces protégés et mutations des tickets           |
+| `app/Enums/UserRole.php`                                     | Rôles typés                                                  |
+| `app/Models/User.php`                                        | Utilisateur et casts                                         |
+| `app/Providers/FortifyServiceProvider.php`                   | Authentification et vues                                     |
+| `app/Providers/AppServiceProvider.php`                       | Gate et politique de mot de passe                            |
+| `config/fortify.php`                                         | Fonctionnalités d’authentification activées                  |
+| `database/migrations`                                        | Schéma, clés étrangères, index et contraintes SQLite         |
+| `app/Models/Ticket.php`, `Comment.php`, `TicketActivity.php` | Relations et casts métier                                    |
+| `app/Enums/TicketStatus.php`, `TicketPriority.php`           | Statuts, graphe et priorités typés                           |
+| `app/Actions/Tickets`                                        | Mutations transactionnelles et contrôle de version           |
+| `app/Policies/TicketPolicy.php`, `app/Http/Requests`         | Autorisations et validation Laravel                          |
+| `database/seeders/DemoUserSeeder.php`                        | Identités déterministes                                      |
+| `database/seeders/DemoTicketSeeder.php`                      | Fixture déterministe, sans écrasement                        |
+| `app/Console/Commands/PrepareDemoAccounts.php`               | Préparation des accès locaux                                 |
+| `resources/views`                                            | Vitrine, formulaires et espaces équipe                       |
+| `tests/Feature`, `tests/Unit`                                | Scénarios HTTP, sécurité, métier, intégrité et démonstration |
+| `composer.json`, `package.json`                              | Scripts de développement et de qualité                       |
+| `.github/workflows/ci.yml`                                   | CI GitHub Actions                                            |
+| `.node-version`, `.composer-version`                         | Versions des outils de développement et CI                   |
 
 ## Feuille de route
 
 1. **Fondations — livré** : environnement, authentification, rôles, vitrine, documentation, outillage et premier commit local.
-2. **Dépôt privé et CI** : publication sur `Medyour/deskops`, installation reproductible, audits bloquants et contrôles GitHub Actions ; intégration via PR brouillon.
-3. **Tickets et workflow** : migrations, enums, policies, validations, liste/détail/création, priorités, assignation et transitions ; tests des refus et de la concurrence.
-4. **Collaboration et audit** : commentaires internes immuables, historique transactionnel et jeu de 12 tickets déterministes.
+2. **Dépôt privé et CI — livré** : publication sur `Medyour/deskops`, installation reproductible, audits bloquants et contrôles GitHub Actions.
+3. **Cœur métier des tickets — livré** : migrations, enums, policy, validations, assignation, transitions, historique immuable, commentaires internes et fixture de 12 tickets ; tests des refus et de la concurrence.
+4. **Parcours des tickets** : liste, détail, formulaires, édition des champs et priorités, présentation des commentaires et de la chronologie ; messages de validation et de conflit.
 5. **Recherche et pilotage** : filtres persistants, pagination, indicateurs à horloge testable et éventuel îlot Vue justifié.
 6. **Finition de la vitrine** : parcours de démonstration, vérifications clavier/mobile et documentation finale.
 
