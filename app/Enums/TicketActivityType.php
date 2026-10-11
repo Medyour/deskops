@@ -10,4 +10,13 @@ enum TicketActivityType: string
     case AssignmentChanged = 'assignment_changed';
     case StatusChanged = 'status_changed';
     case CommentAdded = 'comment_added';
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::TicketCreated => 'Ticket créé', self::TicketUpdated => 'Informations modifiées',
+            self::PriorityChanged => 'Priorité modifiée', self::AssignmentChanged => 'Assignation modifiée',
+            self::StatusChanged => 'Statut modifié', self::CommentAdded => 'Commentaire ajouté',
+        };
+    }
 }

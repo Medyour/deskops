@@ -16,7 +16,7 @@ Les fontes système évitent une dépendance réseau pendant le build. Aucun ser
 - `app/Providers/FortifyServiceProvider.php` : vues d’authentification, reset et limitation de connexion.
 - `app/Actions/Fortify/ResetUserPassword.php` : validation du nouveau mot de passe.
 - `app/Console/Commands/PrepareDemoAccounts.php`, `database/seeders/DemoUserSeeder.php` et `DemoTicketSeeder.php` : accès locaux, identités et fixture déterministes.
-- `routes/web.php` : pages publiques, espaces protégés et trois mutations de tickets sous session/CSRF ; routes d’authentification enregistrées par Fortify.
+- `routes/web.php` : vitrine publique, espaces protégés, pages de tickets et cinq mutations sous session/CSRF ; routes d’authentification enregistrées par Fortify.
 - `resources/views/components` : layout, layout d’authentification et retours de formulaire réutilisés.
 
 Les rôles utilisent un enum PHP et une contrainte SQL, sans package de permissions. Le rôle reste exclu du mass assignment. Un middleware `can` applique la Gate ; le test d’accès HTTP garantit qu’un agent obtient 403 même en ouvrant directement l’URL.
@@ -28,9 +28,12 @@ Le code conserve les répertoires Laravel habituels :
 - Modèles Eloquent `Ticket`, `Comment`, `TicketActivity`, relations, casts, factories et seeders.
 - Enums `TicketStatus`, `TicketPriority` et `TicketActivityType` ; le graphe pur est défini dans `TicketStatus`.
 - `TicketPolicy` pour les autorisations ; Form Requests pour les données d’entrée.
-- `TicketMutationController` délègue les trois mutations web aux actions et redirige vers l’espace équipe. Aucune interface complète de tickets ni route de commentaire n’est fournie à ce stade.
-- Petites actions explicites dans `app/Actions/Tickets` pour les mutations qui combinent règles, transaction et historique (`CreateTicket`, `AssignTicket`, `ChangeTicketStatus`, `AddComment`). Pas de classe abstraite commune.
-- La liste filtrable et les requêtes d’agrégation du tableau de bord seront ajoutées à l’étape d’interface.
+- `TicketController` rend la liste, la création, le détail et l’édition. Il applique les policies ; la liste passe par `IndexTicketsRequest` et le scope Eloquent `filtered`.
+- `TicketMutationController` délègue les cinq mutations aux actions et redirige vers le détail. Il présente les conflits HTML en 409 ; les appels qui attendent du JSON conservent la réponse 409 initiale.
+- Petites actions explicites dans `app/Actions/Tickets` pour les mutations qui combinent règles, transaction et historique (`CreateTicket`, `UpdateTicket`, `AssignTicket`, `ChangeTicketStatus`, `AddComment`). Pas de classe abstraite commune.
+- `TicketWorkspace` prépare les relations et options d’affichage partagées entre détail et conflit. Les transitions disponibles viennent de `ChangeTicketStatus` (graphe et policy) ; la possibilité de libérer l’assignation vient de `AssignTicket`. Les vues ne réimplémentent pas ces règles.
+- La liste charge l’agent et la dernière date d’activité avec une sous-requête d’agrégation. Le détail charge commentaires/auteurs et activités/acteurs en lots, ainsi que les noms des agents cités dans l’historique. Aucune requête par ligne. Les filtres validés seuls sont conservés dans la pagination.
+- Les requêtes d’agrégation du tableau de bord restent à développer.
 
 Une action applique la règle, écrit les données et l’activité dans une seule transaction. Les requêtes conditionnelles protègent la prise en charge concurrente sous SQLite. Éviter les observers génériques pour l’audit : ils ne connaissent pas toujours l’acteur ou le motif métier et peuvent produire des doublons au seeding.
 
@@ -40,7 +43,13 @@ Une action applique la règle, écrit les données et l’activité dans une seu
 
 Les trois migrations métier ajoutent les tickets, activités et commentaires. Les enums deviennent des contraintes SQL ; des triggers SQLite vérifient les longueurs, la version positive, le rôle agent de l’assigné et la cohérence statut/dates. Les clés étrangères restreignent les suppressions. Les index couvrent statut/date, priorité/date, assigné/statut et chronologie par ticket/date/id. La référence est un accessor dérivé de la clé primaire auto-incrémentée, sans compteur distinct ni valeur aléatoire.
 
-Les activités et commentaires n’ont pas de `updated_at`. Des triggers refusent leur édition, suppression et remplacement SQL, y compris un remplacement passant par l’unicité de l’activité de création. Les activités stockent les seuls changements utiles et le motif ; un commentaire est référencé par identifiant sans dupliquer son corps. `AddComment` reste une action interne nécessaire à la fixture, sans ajouter de parcours d’interface.
+Les activités et commentaires n’ont pas de `updated_at`. Des triggers refusent leur édition, suppression et remplacement SQL, y compris un remplacement passant par l’unicité de l’activité de création. Les activités stockent les seuls changements utiles et le motif ; un commentaire est référencé par identifiant sans dupliquer son corps. `AddComment` alimente la fixture et le formulaire de commentaires internes ; aucun parcours d’édition ou de suppression n’est ajouté.
+
+`UpdateTicket` réutilise `TicketMutation` et la policy `update`. Il valide les mêmes champs qu’à la création, refuse les attributs détenus par le serveur et exige une priorité et une version. Une édition effective augmente la version une fois et ajoute une activité par catégorie réellement modifiée (`ticket_updated`, `priority_changed`) dans une seule transaction. Une répétition à jour ne produit aucune écriture.
+
+Les vues Blade échappent tous les textes et fonctionnent sans JavaScript. Les formulaires partagent les règles et messages français de `TicketInput` via `TicketFormRequest`. Les erreurs renvoient vers une page GET nommée, y compris après une reprise de conflit. Le 409 HTML affiche le brouillon validé sans le stocker dans une URL, les valeurs actuelles et une nouvelle tentative explicite avec la version actuelle. Si la permission a disparu, le brouillon reste lisible mais le formulaire est masqué. Le lien vers le ticket actuel ouvre un nouvel onglet pour conserver le brouillon affiché. Aucun réessai automatique.
+
+Les heures sont rendues en Europe/Paris ; le stockage reste UTC. Les tableaux deviennent des cartes sur mobile/tablette. Le détail place les actions avant les commentaires sur petit écran, conserve les labels, erreurs associées, focus visibles et chronologie lisible sans couleur seule.
 
 `DemoTicketSeeder` construit la fixture par les mêmes actions métier, sous une horloge UTC temporaire restaurée après chaque opération. L’ensemble des comptes/tickets et la rotation des accès sont transactionnels. Une relance reconnaît les créations initiales immuables et conserve les mutations et ajouts ; une base incompatible est refusée sans modification partielle. Aucun reset implicite ni marqueur de seed supplémentaire n’est créé.
 
@@ -50,7 +59,7 @@ Pas de repository autour d’Eloquent, bus de commandes, architecture par couche
 
 Pest 4 repose sur PHPUnit. Les tests Feature utilisent une base SQLite en mémoire et `RefreshDatabase`. Ils couvrent les flux HTTP et console, les refus d’accès, les erreurs de validation, la rotation des sessions, la récupération d’accès et les seeders. Le transport mail est simulé ; aucun e-mail externe n’est envoyé.
 
-Les tests Unit couvrent les 25 couples de statuts. Les tests Feature couvrent les huit transitions permises, les transitions interdites, la matrice des permissions, les entrées invalides et les versions obsolètes. Les tests d’intégrité passent aussi par SQL direct et simulent une impossibilité réelle d’écrire l’activité pour vérifier les rollbacks. Un fichier SQLite temporaire dédié permet deux connexions indépendantes, deux versions observées et un writer concurrent occupé. Un autre vérifie l’installation depuis une base vide, deux commandes de démonstration, le rollback des tables métier peuplées, la disparition des triggers, la réapplication et le rollback complet. La fixture complète est vérifiée à horloge figée, ainsi que sa relance après mutation et le refus d’une base incompatible. Les tests d’indicateurs seront ajoutés avec le tableau de bord.
+Les tests Unit couvrent les 25 couples de statuts. Les tests Feature couvrent les huit transitions permises, les transitions interdites, la matrice des permissions, les entrées invalides et les versions obsolètes. Les tests d’intégrité passent aussi par SQL direct et simulent une impossibilité réelle d’écrire l’activité pour vérifier les rollbacks. Un fichier SQLite temporaire dédié permet deux connexions indépendantes, deux versions observées et un writer concurrent occupé. Un autre vérifie l’installation depuis une base vide, deux commandes de démonstration, le rollback des tables métier peuplées, la disparition des triggers, la réapplication et le rollback complet. La fixture complète est vérifiée à horloge figée, ainsi que sa relance après mutation et le refus d’une base incompatible. Les tests de l’espace tickets couvrent pages et accès, recherche littérale, filtres combinés, pagination, versions obsolètes et brouillons, erreurs françaises et retours vers une page GET, commentaires, contenu hostile échappé, matrice des actions affichées et nombre de requêtes borné. L’édition est également testée pour son historique par catégorie, ses refus, les répétitions et le rollback en cas d’échec d’activité. Les tests d’indicateurs seront ajoutés avec le tableau de bord.
 
 Aucune suite JavaScript artificielle pour les fondations : `app.js` ne contient aucune logique. Prettier contrôle les sources front et le build Vite vérifie leur assemblage. Au premier îlot Vue, ajouter Vitest et les tests d’interactions qui le justifient.
 
@@ -60,6 +69,6 @@ La CI commence par `composer run setup` sur une base SQLite neuve, sous PHP 8.3.
 
 ## Limites assumées
 
-L’espace administration est un écran protégé, sans CRUD de comptes. L’historique est persisté mais sa présentation, l’interface des tickets, l’édition des champs/priorités, la recherche et les indicateurs ne sont pas encore développés. Les comptes de démonstration sont exclusivement locaux. Les sessions et hashes nécessaires au fonctionnement restent dans une base ignorée par Git ; les clés locales restent dans `.env`, également ignoré.
+L’espace administration est un écran protégé, sans CRUD de comptes. Les pages et mutations de tickets, la chronologie, la recherche et les filtres sont disponibles. Les indicateurs statistiques ne sont pas encore développés. Les comptes de démonstration sont exclusivement locaux. Les sessions et hashes nécessaires au fonctionnement restent dans une base ignorée par Git ; les clés locales restent dans `.env`, également ignoré.
 
 Le transport `MAIL_MAILER=log` inscrit les liens de récupération dans `storage/logs/laravel.log`. Ce journal reste local et ignoré ; aucun SMTP ou secret externe n’est configuré. L’accès public à ce démonstrateur et sa politique d’exploitation devront être décidés lors d’une étape ultérieure, hors de cette tâche.

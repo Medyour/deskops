@@ -8,13 +8,12 @@
         <span class="rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-900">{{ auth()->user()->role->label() }}</span>
     </div>
     <section aria-labelledby="ready-title" class="mt-10 rounded-2xl border border-teal-200 bg-teal-50 p-6 sm:p-8">
-        <h2 id="ready-title" class="text-lg font-semibold text-teal-950">Votre espace est prêt.</h2>
-        <p class="mt-3 max-w-2xl text-sm leading-relaxed text-teal-900">Cette première version pose les accès et les rôles. La liste des tickets, leur historique et les indicateurs seront ajoutés au fil des prochaines étapes.</p>
+        <h2 id="ready-title" class="text-lg font-semibold text-teal-950">Retrouvez les demandes de l’équipe.</h2>
+        <p class="mt-3 max-w-2xl text-sm leading-relaxed text-teal-900">Recherchez un ticket, suivez son historique et faites avancer les demandes qui vous sont confiées.</p>
+        <a href="{{ route('tickets.index') }}" class="button mt-5">Ouvrir les tickets</a>
     </section>
     <div class="mt-6 grid gap-4 md:grid-cols-3">
         @foreach([
-            ['Tickets', 'Une vue commune des demandes, avec recherche, filtres et assignation.'],
-            ['Activité', 'Les commentaires et les changements réunis dans une chronologie.'],
             ['Tableau de bord', 'La charge de l’équipe, les priorités et les demandes à traiter.'],
         ] as [$heading, $description])
             <section class="card">

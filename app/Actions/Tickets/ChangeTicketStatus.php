@@ -13,6 +13,17 @@ class ChangeTicketStatus
 {
     public function __construct(private TicketMutation $mutation) {}
 
+    /** @return list<TicketStatus> */
+    public function availableTransitions(User $actor, Ticket $ticket): array
+    {
+        if ($ticket->assigned_to === null) {
+            return [];
+        }
+
+        return array_values(array_filter(TicketStatus::cases(), fn (TicketStatus $target): bool => $ticket->status->canTransitionTo($target) && Gate::forUser($actor)->allows('changeStatus', [$ticket, $target])
+        ));
+    }
+
     /** @param array{version: int, status: string, reason?: string|null} $input */
     public function execute(User $actor, Ticket $ticket, array $input): Ticket
     {

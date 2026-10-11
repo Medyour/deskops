@@ -4,11 +4,11 @@
 
 DeskOps est un mini-centre de support client pour une petite équipe. Ce projet vitrine démontrera des accès par rôle, un workflow de tickets, des règles métier testées, une chronologie d’activité et un tableau de bord.
 
-## État actuel — fondations, CI et cœur métier des tickets
+## État actuel — fondations, CI et espace tickets
 
 Les fondations sont prêtes : vitrine responsive, connexion/déconnexion, « se souvenir de moi », récupération et confirmation du mot de passe, rôles **administrateur** et **agent**, espaces protégés et comptes de démonstration locaux.
 
-Le cœur métier des tickets est disponible : création, assignation/réassignation, transitions contrôlées, permissions, conflits de version et historique transactionnel immuable. Les commentaires disposent d’une action interne et servent la fixture de démonstration. Les pages et formulaires complets des tickets, l’édition des champs/priorités, les filtres et les indicateurs restent à construire. Aucune inscription publique.
+L’espace tickets est disponible : liste paginée, recherche et filtres combinables dans l’URL, création, détail, édition des informations et de la priorité, assignation/réassignation, transitions autorisées, commentaires internes et historique immuable. Les formulaires réutilisent les actions et policies du cœur métier. Un conflit 409 conserve la saisie à l’écran, présente les valeurs actuelles et demande une reprise explicite. Les indicateurs statistiques restent à construire. Aucune inscription publique.
 
 Le contrat complet se trouve dans [docs/MVP.md](docs/MVP.md), les choix de structure dans [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -52,7 +52,7 @@ Si des tickets étrangers à la fixture existent, si la fixture est partielle ou
 
 Les actions de `app/Actions/Tickets` centralisent validation, autorisation, transaction et activité. La référence `DS-0001` dérive de la clé primaire SQLite et reste unique au-delà de quatre chiffres. Les mutations transmettent la version observée du ticket ; une version obsolète ou un verrou SQLite entraîne un conflit HTTP 409, sans écriture partielle. Les répétitions autorisées à jour sont sans effet.
 
-Trois routes web protégées par session et CSRF préparent les futurs formulaires : `POST /tickets`, `PATCH /tickets/{ticket}/assignment` et `PATCH /tickets/{ticket}/status`. Les contrôleurs délèguent aux actions et redirigent vers l’espace équipe. Les commentaires restent accessibles par action interne à ce stade. Le graphe, les motifs obligatoires et les permissions détaillées sont définis dans [le contrat du MVP](docs/MVP.md).
+Les pages protégées sont `GET /tickets`, `/tickets/create`, `/tickets/{ticket}` et `/tickets/{ticket}/edit`. Les cinq mutations sous session/CSRF couvrent création, édition, assignation, statut et commentaire. Les contrôleurs délèguent aux actions et redirigent vers le détail. L’édition ajoute une activité par catégorie modifiée et n’incrémente la version qu’une fois. Le graphe, les motifs obligatoires et les permissions détaillées sont définis dans [le contrat du MVP](docs/MVP.md).
 
 ### Ouvrir l’application
 
@@ -124,7 +124,7 @@ composer audit
 npm audit
 ```
 
-Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; les tests de concurrence et de migrations utilisent des fichiers SQLite temporaires supprimés après les tests. Ils couvrent l’authentification et les rôles, les transitions autorisées/interdites, les entrées invalides, l’assignation, les versions obsolètes, les verrous SQLite, le rollback de l’historique, les contraintes SQL, la réversibilité des migrations et l’idempotence de la fixture. Les tests Unit couvrent le graphe complet des statuts. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
+Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; les tests de concurrence et de migrations utilisent des fichiers SQLite temporaires supprimés après les tests. Ils couvrent aussi les pages, filtres combinés, pagination, requêtes sans N+1, textes échappés, brouillons après 409 et édition atomique. Ils couvrent l’authentification et les rôles, les transitions autorisées/interdites, les entrées invalides, l’assignation, les versions obsolètes, les verrous SQLite, le rollback de l’historique, les contraintes SQL, la réversibilité des migrations et l’idempotence de la fixture. Les tests Unit couvrent le graphe complet des statuts. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
 
 ## Fichiers à connaître
 
@@ -155,8 +155,8 @@ Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; l
 1. **Fondations — livré** : environnement, authentification, rôles, vitrine, documentation, outillage et premier commit local.
 2. **Dépôt privé et CI — livré** : publication sur `Medyour/deskops`, installation reproductible, audits bloquants et contrôles GitHub Actions.
 3. **Cœur métier des tickets — livré** : migrations, enums, policy, validations, assignation, transitions, historique immuable, commentaires internes et fixture de 12 tickets ; tests des refus et de la concurrence.
-4. **Parcours des tickets** : liste, détail, formulaires, édition des champs et priorités, présentation des commentaires et de la chronologie ; messages de validation et de conflit.
-5. **Recherche et pilotage** : filtres persistants, pagination, indicateurs à horloge testable et éventuel îlot Vue justifié.
+4. **Parcours des tickets — livré** : liste, détail, création, édition des champs/priorités, commentaires et chronologie ; messages français de validation et de conflit ; recherche, filtres persistants et pagination ; parcours responsive sans JavaScript.
+5. **Pilotage** : indicateurs à horloge testable et éventuel îlot Vue justifié.
 6. **Finition de la vitrine** : parcours de démonstration, vérifications clavier/mobile et documentation finale.
 
 Le dépôt GitHub est privé : [`Medyour/deskops`](https://github.com/Medyour/deskops). La CI ne publie aucun site ni artefact de déploiement. Aucun hébergement ou domaine n’est configuré. Le contrat détaillé du MVP fait foi pour les prochaines étapes métier.

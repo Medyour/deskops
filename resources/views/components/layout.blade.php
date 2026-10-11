@@ -19,6 +19,7 @@
             </a>
             <div class="flex flex-wrap items-center gap-4 text-sm">
                 @auth
+                    <a href="{{ route('tickets.index') }}" @if(request()->routeIs('tickets.*')) aria-current="page" @endif class="font-medium hover:text-teal-800">Tickets</a>
                     <a href="{{ route('dashboard') }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif class="font-medium hover:text-teal-800">Mon espace</a>
                     @can('access-administration')
                         <a href="{{ route('admin') }}" @if(request()->routeIs('admin')) aria-current="page" @endif class="font-medium hover:text-teal-800">Administration</a>
@@ -33,12 +34,12 @@
             </div>
         </nav>
     </header>
-    <main id="main" class="mx-auto max-w-6xl px-6 py-12 sm:py-16">
+    <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-6 py-12 sm:py-16">
         {{ $slot }}
     </main>
     <footer class="mx-auto flex max-w-6xl flex-wrap justify-between gap-3 border-t border-stone-200 px-6 py-6 text-xs text-slate-500">
         <span>DeskOps · Le support, avec méthode.</span>
-        <span>Démonstration locale · Fondations</span>
+        <span>Démonstration locale · Espace support</span>
     </footer>
 </body>
 </html>

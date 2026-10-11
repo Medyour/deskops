@@ -7,6 +7,7 @@ use App\Enums\TicketStatus;
 use App\Enums\UserRole;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Enum;
 
 class TicketInput
 {
@@ -49,6 +50,56 @@ class TicketInput
         ];
     }
 
+    /** @return array<string, array<mixed>> */
+    public static function updateRules(): array
+    {
+        $rules = self::creationRules();
+        $rules['priority'] = ['required', Rule::enum(TicketPriority::class)];
+        $rules['version'] = ['required', 'integer', 'min:1'];
+
+        return $rules;
+    }
+
+    /** @return array<string, array<mixed>> */
+    public static function commentRules(): array
+    {
+        return [
+            'version' => ['required', 'integer', 'min:1'],
+            'body' => ['required', 'string', 'min:1', 'max:5000', 'regex:/[^\s\p{Z}]/u'],
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function messages(): array
+    {
+        return [
+            'required' => 'Le champ :attribute est obligatoire.',
+            'present' => 'Le champ :attribute doit être transmis.',
+            'string' => 'Le champ :attribute doit être un texte.',
+            'integer' => 'Le champ :attribute doit être un entier.',
+            'min.string' => 'Le champ :attribute doit contenir au moins :min caractères.',
+            'max.string' => 'Le champ :attribute ne doit pas dépasser :max caractères.',
+            'min.numeric' => 'Le champ :attribute doit être au moins égal à :min.',
+            'email' => 'Saisissez une adresse e-mail valide.',
+            Enum::class => 'La valeur du champ :attribute est inconnue.',
+            'exists' => 'Choisissez un agent existant.',
+            'in' => 'La valeur du champ :attribute est inconnue.',
+            'regex' => 'Le champ :attribute doit contenir du texte non blanc.',
+            'missing' => 'Le champ :attribute ne peut pas être défini.',
+        ];
+    }
+
+    /** @return array<string, string> */
+    public static function attributes(): array
+    {
+        return [
+            'title' => 'sujet', 'description' => 'description', 'requester_name' => 'nom du demandeur',
+            'requester_email' => 'e-mail du demandeur', 'priority' => 'priorité', 'status' => 'statut',
+            'assigned_to' => 'agent assigné', 'version' => 'version', 'body' => 'commentaire',
+            'reason' => 'motif', 'q' => 'recherche', 'assignee' => 'assignation', 'page' => 'page',
+        ];
+    }
+
     /**
      * @param  array<string, mixed>  $input
      * @param  array<string, array<mixed>>  $rules
@@ -62,6 +113,6 @@ class TicketInput
             }
         }
 
-        return Validator::make($input, $rules)->validate();
+        return Validator::make($input, $rules, self::messages(), self::attributes())->validate();
     }
 }
