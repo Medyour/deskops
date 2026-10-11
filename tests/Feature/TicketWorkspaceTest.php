@@ -181,7 +181,8 @@ test('agents cannot open edit pages for tickets assigned to a colleague', functi
     $agent = User::factory()->create();
     $ticket = Ticket::factory()->inStatus(TicketStatus::InProgress)->create();
 
-    $this->actingAs($agent)->get(route('tickets.edit', $ticket))->assertForbidden();
+    $this->actingAs($agent)->get(route('tickets.edit', $ticket))->assertForbidden()
+        ->assertSee('Accès refusé')->assertSee('Cette action n’est pas autorisée.')->assertSee(route('tickets.index'));
 });
 
 test('an assigned agent can edit fields through the workspace and returns to the detail', function () {
@@ -284,6 +285,24 @@ test('a conflict keeps the draft visible when reassignment removes edit permissi
 
     $this->assertDatabaseHas('tickets', ['id' => $ticket->id, 'assigned_to' => $other->id, 'version' => 2]);
     $this->assertDatabaseCount('ticket_activities', 1);
+});
+
+test('a 409 preserves an explicit release selection and retries it with the current version', function () {
+    $admin = User::factory()->administrator()->create();
+    $agent = User::factory()->create();
+    $other = User::factory()->create();
+    $ticket = Ticket::factory()->assignedTo($agent)->create();
+    app(AssignTicket::class)->execute($admin, $ticket, ['version' => 1, 'assigned_to' => $other->id]);
+
+    $this->actingAs($admin)->patch(route('tickets.assign', $ticket), ['version' => 1, 'assigned_to' => null])
+        ->assertConflict()->assertSee('<option value="" selected>Non assigné</option>', false)
+        ->assertSee('name="version" value="2"', false);
+
+    $this->assertDatabaseHas('tickets', ['id' => $ticket->id, 'assigned_to' => $other->id, 'version' => 2]);
+    $this->assertDatabaseCount('ticket_activities', 1);
+    $this->patch(route('tickets.assign', $ticket), ['version' => 2, 'assigned_to' => null])->assertRedirect(route('tickets.show', $ticket));
+    $this->assertDatabaseHas('tickets', ['id' => $ticket->id, 'assigned_to' => null, 'version' => 3]);
+    $this->assertDatabaseCount('ticket_activities', 2);
 });
 
 test('nonexistent detail pages return 404', function () {

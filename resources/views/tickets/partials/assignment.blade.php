@@ -4,12 +4,13 @@
         @method('PATCH')
         <input type="hidden" name="version" value="{{ isset($draft) ? $ticket->version : old('version', $ticket->version) }}">
         @if(auth()->user()->isAdministrator())
+            @php($selectedAssignee = old('assigned_to', isset($draft) ? $draft['assigned_to'] : $ticket->assigned_to))
             <div>
                 <label for="assigned_to" class="block text-sm font-semibold">Agent assigné</label>
                 <select id="assigned_to" name="assigned_to" class="field" aria-describedby="assignment-hint{{ $errors->has('assigned_to') ? ' assigned_to-error' : '' }}" @if($errors->has('assigned_to')) aria-invalid="true" @endif>
-                    @if($allowsRelease)<option value="" @selected((string) old('assigned_to', $draft['assigned_to'] ?? $ticket->assigned_to) === '')>Non assigné</option>@endif
+                    @if($allowsRelease)<option value="" @selected((string) $selectedAssignee === '')>Non assigné</option>@endif
                     @foreach($agents as $agent)
-                        <option value="{{ $agent->id }}" @selected((string) old('assigned_to', $draft['assigned_to'] ?? $ticket->assigned_to) === (string) $agent->id)>{{ $agent->name }}</option>
+                        <option value="{{ $agent->id }}" @selected((string) $selectedAssignee === (string) $agent->id)>{{ $agent->name }}</option>
                     @endforeach
                 </select>
                 <p id="assignment-hint" class="mt-2 text-xs leading-relaxed text-slate-500">{{ $allowsRelease ? 'Choisissez un agent ou laissez le ticket non assigné.' : 'L’assignation reste obligatoire à ce statut.' }}</p>
