@@ -45,6 +45,8 @@ Un administrateur n’est pas un agent assignable. La création produit toujours
 
 Référence affichée : `DS-0001`, calculée à partir de l’identifiant entier (au moins quatre chiffres ; reste unique après 9999). Le contact est dénormalisé sur le ticket : pas de modèle Client à ce stade. Les textes sont stockés comme texte brut et échappés à l’affichage ; ni HTML, ni Markdown interprété.
 
+SQLite reste le moteur de développement local rapide ; PostgreSQL 18 est le moteur serveur compatible. La future démonstration DigitalOcean utilisera une base de développement pour les seules données fictives, sans sauvegarde intégrée, distincte d’une éventuelle base gérée de production. Les paramètres de connexion seront fournis au runtime et conservés. Les règles métier et leurs protections SQL sont identiques sur les deux moteurs. La référence ne promet pas une numérotation sans trous : PostgreSQL ne réutilise pas les valeurs de séquence consommées par une transaction annulée.
+
 Clés étrangères vers les utilisateurs et tickets avec suppression restreinte. Les comptes ne sont pas supprimés dans le MVP. Index : statut/date, priorité/date, agent/statut, activités et commentaires par ticket/date/id. Pas de moteur de recherche externe.
 
 ## Statuts et transitions
@@ -78,9 +80,9 @@ Priorités : `low` (Basse), `normal` (Normale, par défaut), `high` (Haute), `ur
 
 Un ticket a zéro ou un agent assigné. Seuls des utilisateurs au rôle agent peuvent être choisis. Nouveau peut être assigné ou non. En cours, En attente du client et Résolu exigent un agent assigné. Libérer l’assignation n’est possible qu’à l’état Nouveau. Changer d’agent ne modifie pas le statut. Un ticket fermé garde son dernier agent et ne peut être réassigné avant sa réouverture.
 
-La prise en charge est atomique : si deux agents réclament un même ticket, une seule opération réussit, l’autre reçoit un conflit explicite (HTTP 409). La vérification du statut/de l’assignation et l’écriture de l’activité s’effectuent dans la même transaction. Utiliser une écriture conditionnelle sur les valeurs courantes pour SQLite ; ne pas compter sur un verrou de ligne absent de SQLite.
+La prise en charge est atomique : si deux agents réclament un même ticket, une seule opération réussit, l’autre reçoit un conflit explicite (HTTP 409). La vérification du statut/de l’assignation et l’écriture de l’activité s’effectuent dans la même transaction. Une écriture conditionnelle sur la version courante réserve le writer SQLite ou verrouille la ligne PostgreSQL avant de relire les règles. Ne pas compter sur un verrou de ligne absent de SQLite.
 
-Précision technique : toute mutation d’un ticket existant transmet la `version` observée. Une mutation effective, y compris un commentaire ajouté, l’incrémente une fois. Une version absente ou invalide produit une erreur de validation ; une version obsolète ou une base temporairement occupée produit un conflit 409 invitant à recharger. Une répétition autorisée et à jour ne modifie ni version, ni dates, ni historique. L’assignation et les permissions sont relues dans la transaction après une écriture conditionnelle qui réserve le writer SQLite.
+Précision technique : toute mutation d’un ticket existant transmet la `version` observée. Une mutation effective, y compris un commentaire ajouté, l’incrémente une fois. Une version absente ou invalide produit une erreur de validation ; une version obsolète ou un conflit temporaire de verrou produit un conflit 409 invitant à recharger. Une répétition autorisée et à jour ne modifie ni version, ni dates, ni historique. L’assignation et les permissions sont relues dans la transaction après la réservation conditionnelle. PostgreSQL utilise `READ COMMITTED` ; les conflits de verrou, sérialisation ou deadlock non résolus après les tentatives transactionnelles deviennent des 409, sans masquer les autres erreurs SQL.
 
 ## Commentaires et historique
 
@@ -90,11 +92,11 @@ Une activité est ajoutée pour chaque création, modification des champs métie
 
 Une commande qui change plusieurs catégories produit une activité par catégorie, dans une transaction unique. Une opération sans changement n’ajoute rien. La chronologie est ordonnée par `created_at` puis `id`. Les tests doivent prouver qu’une opération refusée ne laisse ni modification ni activité.
 
-SQLite refuse également les mises à jour, suppressions et remplacements d’activités ou de commentaires. Une seule activité de création est permise par ticket. Les activités de création conservent les champs métier initiaux ; celles d’assignation et de statut conservent seulement les valeurs réellement changées, les dates métier concernées et le motif éventuel. La version technique n’est pas dupliquée dans l’historique.
+SQLite et PostgreSQL refusent également les mises à jour, suppressions et remplacements d’activités ou de commentaires. PostgreSQL refuse aussi `TRUNCATE`, qui ne déclenche pas ses triggers de suppression. Une seule activité de création est permise par ticket. Les activités de création conservent les champs métier initiaux ; celles d’assignation et de statut conservent seulement les valeurs réellement changées, les dates métier concernées et le motif éventuel. La version technique n’est pas dupliquée dans l’historique.
 
 ## Recherche et filtres
 
-Liste paginée par 20, nouveaux tickets d’abord (`created_at DESC, id DESC`). Recherche `q` (0–100 caractères, espaces externes retirés) sur référence exacte, titre, nom et e-mail du contact. La recherche de référence est insensible à la casse. Pour les textes, recherche par sous-chaîne avec la casse ASCII de SQLite ; la recherche sans accents n’est pas promise dans le MVP. Les caractères `%` et `_` sont traités littéralement, pas comme jokers SQL.
+Liste paginée par 20, nouveaux tickets d’abord (`created_at DESC, id DESC`). Recherche `q` (0–100 caractères, espaces externes retirés) sur référence exacte, titre, nom et e-mail du contact. La référence canonique est convertie en identifiant pour rechercher par clé primaire, sans fonction SQL propre à un moteur. La recherche de référence est insensible à la casse. Pour les textes, recherche par sous-chaîne avec `LOWER`, insensible à la casse ASCII sur les deux moteurs ; les variantes Unicode dépendent du moteur et la recherche sans accents n’est pas promise. Les caractères `%`, `_` et le caractère d’échappement sont traités littéralement, pas comme jokers SQL.
 
 Filtres GET combinables avec un ET : `status`, `priority`, `assignee` (id d’agent, `me`, `unassigned`) et `queue` (vue opérationnelle définie ci-dessous). Les valeurs inconnues sont rejetées avec une erreur de validation ; elles ne disparaissent pas silencieusement. Les paramètres restent dans l’URL et dans les liens de pagination. Un bouton « Réinitialiser » efface les filtres. Afficher le nombre de résultats et un état vide utile. Aucun tri ou recherche côté navigateur nécessaire.
 

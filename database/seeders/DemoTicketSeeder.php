@@ -55,7 +55,10 @@ class DemoTicketSeeder extends Seeder
 
                 return;
             }
-            if ((int) DB::table('sqlite_sequence')->where('name', 'tickets')->value('seq') > 0) {
+            $sequenceUsed = DB::getDriverName() === 'pgsql'
+                ? DB::selectOne('SELECT is_called FROM tickets_id_seq')->is_called
+                : (int) DB::table('sqlite_sequence')->where('name', 'tickets')->value('seq') > 0;
+            if ($sequenceUsed) {
                 throw new LogicException('Fixture refusée : les identifiants de cette base ont déjà été utilisés.');
             }
             foreach (self::TICKETS as $index => [$title, $status, $priority, $agentName]) {
@@ -65,6 +68,9 @@ class DemoTicketSeeder extends Seeder
                     'title' => $title, 'description' => 'Demande de démonstration : '.$title.'. Merci de vérifier et de proposer une solution.',
                     'requester_name' => 'Client '.$number, 'requester_email' => 'client'.$number.'@deskops.example', 'priority' => $priority->value,
                 ]));
+                if ($ticket->id !== $number) {
+                    throw new LogicException('Fixture refusée : les identifiants de cette base ont déjà été utilisés.');
+                }
                 $agent = $agentName === null ? null : User::where('email', $agentName.'@deskops.example')->firstOrFail();
                 if ($agent !== null) {
                     $ticket = Date::withTestNow($createdAt->addMinute(), fn (): Ticket => app(AssignTicket::class)->execute($creator, $ticket, ['version' => $ticket->version, 'assigned_to' => $agent->id]));

@@ -20,12 +20,38 @@ defaults:
 
 jobs:
     check:
-        name: PHP 8.3 · SQLite · Node 24
+        name: PHP 8.3 · ${{ matrix.label }} · Node 24
         runs-on: ubuntu-24.04
         timeout-minutes: 15
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - connection: sqlite
+                      label: SQLite
+                    - connection: pgsql
+                      label: PostgreSQL 18
         env:
             CI: 'true'
             COMPOSER_NO_INTERACTION: '1'
+            DB_CONNECTION: ${{ matrix.connection }}
+            DATABASE_URL: ${{ matrix.connection == 'pgsql' && 'postgresql://deskops@127.0.0.1:5432/deskops_test?sslmode=disable' || '' }}
+
+        services:
+            postgres:
+                image: ${{ matrix.connection == 'pgsql' && 'postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336' || '' }}
+                env:
+                    POSTGRES_USER: deskops
+                    POSTGRES_DB: deskops_test
+                    # Authentication without a password only inside this disposable CI runner.
+                    POSTGRES_HOST_AUTH_METHOD: trust
+                ports:
+                    - 127.0.0.1:5432:5432
+                options: >-
+                    --health-cmd "pg_isready -h 127.0.0.1 -U deskops -d deskops_test"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 30
 
         steps:
             - name: Checkout
@@ -40,7 +66,7 @@ jobs:
               uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
               with:
                   php-version: '8.3'
-                  extensions: pdo_sqlite, sqlite3, mbstring, intl, curl, dom, xml, fileinfo, zip
+                  extensions: pdo_pgsql, pdo_sqlite, sqlite3, mbstring, intl, curl, dom, xml, fileinfo, zip
                   coverage: none
                   tools: composer:${{ env.COMPOSER_VERSION }}
               env:
@@ -54,13 +80,13 @@ jobs:
                   cache-dependency-path: package-lock.json
                   package-manager-cache: false
 
-            - name: Verify runtimes and SQLite extensions
+            - name: Verify runtimes and database extensions
               run: |
                   php --version
                   composer --version
                   node --version
                   npm --version
-                  php -r 'if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 3) { fwrite(STDERR, "PHP 8.3 required\n"); exit(1); } foreach (["pdo_sqlite", "sqlite3"] as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "Missing extension: ".$extension."\n"); exit(1); } }'
+                  php -r 'if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 3) { fwrite(STDERR, "PHP 8.3 required\n"); exit(1); } foreach (["pdo_pgsql", "pdo_sqlite", "sqlite3"] as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "Missing extension: ".$extension."\n"); exit(1); } }'
                   test "$(node --version)" = "v$(cat .node-version)"
                   test "$(npm --version)" = "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager.split("@")[1]')"
                   test "$(composer --version --no-ansi | cut -d ' ' -f 3)" = "$(cat .composer-version)"
@@ -76,11 +102,35 @@ jobs:
                   key: ${{ runner.os }}-composer-php83-${{ env.COMPOSER_VERSION }}-${{ hashFiles('composer.lock') }}
 
             - name: Install from lockfiles on a fresh SQLite database
+              if: matrix.connection == 'sqlite'
               run: |
                   test ! -e .env
                   test ! -e database/database.sqlite
                   composer run setup
                   test -s database/database.sqlite
 
+            - name: Verify PostgreSQL readiness and major version
+              if: matrix.connection == 'pgsql'
+              run: |
+                  version=$(docker exec "${{ job.services.postgres.id }}" psql -U deskops -d deskops_test -Atc "SHOW server_version_num")
+                  test "$version" -ge 180000
+                  test "$version" -lt 190000
+                  echo "PostgreSQL server_version_num=$version"
+
+            - name: Install from lockfiles on a fresh PostgreSQL database
+              if: matrix.connection == 'pgsql'
+              run: |
+                  test ! -e .env
+                  composer install --no-interaction --prefer-dist
+                  cp .env.example .env
+                  php artisan config:clear --no-interaction
+                  php artisan key:generate --no-interaction
+                  php artisan migrate --force --no-interaction
+                  npm ci --ignore-scripts
+                  npm run build
+
             - name: Check quality, security audits, tests and Vite build
               run: composer run check
+
+            - name: Run the complete test suite in a reproducible random order
+              run: php vendor/bin/pest --compact --order-by=random --random-order-seed=20261011

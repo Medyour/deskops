@@ -18,7 +18,7 @@ test('the complete demo fixture matches the MVP without random business data', f
     $this->assertDatabaseCount('tickets', 12);
     $this->assertDatabaseCount('comments', 24);
     $this->assertDatabaseCount('ticket_activities', 60);
-    expect(DB::table('ticket_activities')->selectRaw('type, count(*) as total')->groupBy('type')->pluck('total', 'type')->all())
+    expect(DB::table('ticket_activities')->selectRaw('type, count(*) as total')->groupBy('type')->orderBy('type')->pluck('total', 'type')->all())
         ->toBe(['assignment_changed' => 9, 'comment_added' => 24, 'status_changed' => 15, 'ticket_created' => 12]);
     expect(Ticket::orderBy('id')->get()->map(fn (Ticket $ticket): array => [$ticket->reference, $ticket->title, $ticket->status->value, $ticket->priority->value, $ticket->assignee?->email])->all())
         ->toBe([

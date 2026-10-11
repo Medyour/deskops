@@ -34,11 +34,18 @@ class Ticket extends Model
     public function scopeFiltered(Builder $query, array $filters, int $viewerId): Builder
     {
         if (($search = $filters['q'] ?? '') !== '') {
+            $referenceId = null;
+            if (preg_match('/^DS-([0-9]{4,})$/iD', $search, $matches) === 1) {
+                $candidate = (int) $matches[1];
+                if ('DS-'.str_pad((string) $candidate, 4, '0', STR_PAD_LEFT) === strtoupper($search)) {
+                    $referenceId = $candidate;
+                }
+            }
             $literal = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
-            $query->where(function (Builder $searchQuery) use ($search, $literal): void {
-                $searchQuery->whereRaw("printf('DS-%04d', id) = ? COLLATE NOCASE", [$search]);
+            $query->where(function (Builder $searchQuery) use ($referenceId, $literal): void {
+                $searchQuery->where('id', $referenceId);
                 foreach (['title', 'requester_name', 'requester_email'] as $field) {
-                    $searchQuery->orWhereRaw($field." LIKE ? ESCAPE '\\'", [$literal]);
+                    $searchQuery->orWhereRaw('LOWER('.$field.') LIKE LOWER(?) ESCAPE ?', [$literal, '\\']);
                 }
             });
         }

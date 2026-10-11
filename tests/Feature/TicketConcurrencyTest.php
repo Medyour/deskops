@@ -7,15 +7,14 @@ use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 
-test('independent SQLite file connections cannot both claim the same observed version', function () {
-    $path = tempnam(sys_get_temp_dir(), 'deskops-ticket-race-');
-    $default = DB::getDefaultConnection();
-    $configuration = [...config('database.connections.sqlite'), 'database' => $path, 'url' => null, 'busy_timeout' => 1];
-    config(['database.connections.ticket_race' => $configuration, 'database.connections.ticket_race_other' => $configuration]);
-    DB::setDefaultConnection('ticket_race');
+test('independent connections cannot both claim the same version and lock contention returns 409', function () {
+    $cleanup = $this->isolateDatabase(['ticket_race', 'ticket_race_other']);
 
     try {
         expect(Artisan::call('migrate', ['--database' => 'ticket_race', '--force' => true, '--no-interaction' => true]))->toBe(0);
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement("SET lock_timeout TO '20ms'");
+        }
         $firstAgent = User::factory()->create();
         $secondAgent = User::factory()->create();
         $ticket = Ticket::factory()->create();
@@ -36,15 +35,13 @@ test('independent SQLite file connections cannot both claim the same observed ve
         try {
             expect(fn () => app(AssignTicket::class)->execute($firstAgent, $ticket, ['version' => 2, 'assigned_to' => $firstAgent->id]))
                 ->toThrow(StaleTicket::class);
+            $this->actingAs($firstAgent)->patchJson(route('tickets.assign', $ticket), ['version' => 2, 'assigned_to' => $firstAgent->id])->assertConflict();
         } finally {
             $other->rollBack();
         }
         $this->assertDatabaseCount('ticket_activities', 1, 'ticket_race');
         $this->assertDatabaseHas('tickets', ['id' => $ticket->id, 'version' => 2], 'ticket_race');
     } finally {
-        DB::setDefaultConnection($default);
-        DB::purge('ticket_race');
-        DB::purge('ticket_race_other');
-        unlink($path);
+        $cleanup();
     }
 });

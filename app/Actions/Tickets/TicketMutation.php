@@ -17,7 +17,7 @@ class TicketMutation
     {
         try {
             return DB::transaction(function () use ($ticket, $expectedVersion, $operation): Ticket {
-                /** The first statement claims the SQLite writer without altering timestamps or the version. */
+                /** The conditional write reserves the SQLite writer or PostgreSQL row before rechecking permissions. */
                 $matched = DB::table('tickets')->where('id', $ticket->id)->where('version', $expectedVersion)
                     ->update(['version' => DB::raw('version')]);
                 if ($matched !== 1) {
@@ -27,7 +27,10 @@ class TicketMutation
                 return $operation(Ticket::query()->findOrFail($ticket->id));
             }, attempts: 3);
         } catch (QueryException $exception) {
-            if (in_array(((int) ($exception->errorInfo[1] ?? 0)) & 255, [5, 6], true)) {
+            $driver = DB::connection()->getDriverName();
+            $locked = $driver === 'sqlite' && in_array(((int) ($exception->errorInfo[1] ?? 0)) & 255, [5, 6], true);
+            $conflicted = $driver === 'pgsql' && in_array($exception->errorInfo[0] ?? null, ['55P03', '40001', '40P01'], true);
+            if ($locked || $conflicted) {
                 throw new StaleTicket;
             }
             throw $exception;

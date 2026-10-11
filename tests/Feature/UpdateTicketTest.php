@@ -5,7 +5,6 @@ use App\Enums\TicketStatus;
 use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\DB;
 
 test('editing fields and priority writes two categories with a single version increment', function () {
     $this->freezeTime();
@@ -97,12 +96,12 @@ test('failure to record the second edit category rolls back all edits and activi
     $admin = User::factory()->administrator()->create();
     $ticket = Ticket::factory()->create(ticketCoreInput());
     $before = $ticket->fresh()->getAttributes();
-    DB::unprepared("CREATE TRIGGER fail_priority_activity BEFORE INSERT ON ticket_activities WHEN NEW.type = 'priority_changed' BEGIN SELECT RAISE(ABORT, 'simulated history failure'); END");
+    $restoreHistory = $this->preventActivityWrites(priorityOnly: true);
 
     try {
         expect(fn () => app(UpdateTicket::class)->execute($admin, $ticket, [...ticketCoreInput(), 'version' => 1, 'title' => 'Sujet fictif corrigé', 'priority' => 'urgent']))->toThrow(QueryException::class);
     } finally {
-        DB::unprepared('DROP TRIGGER fail_priority_activity');
+        $restoreHistory();
     }
 
     expect($ticket->fresh()->getAttributes())->toBe($before);
