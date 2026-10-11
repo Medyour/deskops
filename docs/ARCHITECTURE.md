@@ -44,7 +44,9 @@ Ajouter les tests métier avec les cas limites et les invariants du contrat MVP.
 
 Aucune suite JavaScript artificielle pour les fondations : `app.js` ne contient aucune logique. Prettier contrôle les sources front et le build Vite vérifie leur assemblage. Au premier îlot Vue, ajouter Vitest et les tests d’interactions qui le justifient.
 
-`composer run check` constitue la CI locale : manifeste Composer, Pint en vérification, tests Laravel, format front/documentation et build de production. Elle échoue au premier contrôle en erreur. Les fichiers de verrouillage Composer et npm sont versionnés. Les tests métier ne nécessitent pas le serveur Herd.
+`composer run check` constitue le contrôle commun local/GitHub Actions : manifeste Composer, exigences de plateforme, audits Composer/npm, Pint en vérification, tests Laravel, format front/documentation, script de tests JavaScript lorsqu’il existe et build de production. Elle échoue au premier contrôle en erreur. Les fichiers de verrouillage Composer et npm sont versionnés. Les tests métier ne nécessitent pas le serveur Herd.
+
+La CI commence par `composer run setup` sur une base SQLite neuve, sous PHP 8.3. Node et Composer suivent `.node-version` et `.composer-version` ; npm suit `packageManager`. Les actions sont épinglées par SHA avec un jeton en lecture seule. Les caches contiennent uniquement les téléchargements des gestionnaires de dépendances, jamais les données ou identifiants de l’application.
 
 ## Limites assumées
 

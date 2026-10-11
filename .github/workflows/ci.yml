@@ -1,0 +1,86 @@
+name: CI
+
+on:
+    push:
+        branches: [main, 'agent/**']
+    pull_request:
+        branches: [main]
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+defaults:
+    run:
+        shell: bash
+
+jobs:
+    check:
+        name: PHP 8.3 · SQLite · Node 24
+        runs-on: ubuntu-24.04
+        timeout-minutes: 15
+        env:
+            CI: 'true'
+            COMPOSER_NO_INTERACTION: '1'
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: Read Composer version
+              run: echo "COMPOSER_VERSION=$(cat .composer-version)" >> "$GITHUB_ENV"
+
+            - name: Set up PHP 8.3
+              uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+              with:
+                  php-version: '8.3'
+                  extensions: pdo_sqlite, sqlite3, mbstring, intl, curl, dom, xml, fileinfo, zip
+                  coverage: none
+                  tools: composer:${{ env.COMPOSER_VERSION }}
+              env:
+                  fail-fast: 'true'
+
+            - name: Set up Node
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version-file: .node-version
+                  cache: npm
+                  cache-dependency-path: package-lock.json
+                  package-manager-cache: false
+
+            - name: Verify runtimes and SQLite extensions
+              run: |
+                  php --version
+                  composer --version
+                  node --version
+                  npm --version
+                  php -r 'if (PHP_MAJOR_VERSION !== 8 || PHP_MINOR_VERSION !== 3) { fwrite(STDERR, "PHP 8.3 required\n"); exit(1); } foreach (["pdo_sqlite", "sqlite3"] as $extension) { if (!extension_loaded($extension)) { fwrite(STDERR, "Missing extension: ".$extension."\n"); exit(1); } }'
+                  test "$(node --version)" = "v$(cat .node-version)"
+                  test "$(npm --version)" = "$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).packageManager.split("@")[1]')"
+                  test "$(composer --version --no-ansi | cut -d ' ' -f 3)" = "$(cat .composer-version)"
+
+            - name: Locate Composer download cache
+              id: composer-cache
+              run: echo "path=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+            - name: Cache Composer downloads
+              uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+              with:
+                  path: ${{ steps.composer-cache.outputs.path }}
+                  key: ${{ runner.os }}-composer-php83-${{ env.COMPOSER_VERSION }}-${{ hashFiles('composer.lock') }}
+
+            - name: Install from lockfiles on a fresh SQLite database
+              run: |
+                  test ! -e .env
+                  test ! -e database/database.sqlite
+                  composer run setup
+                  test -s database/database.sqlite
+
+            - name: Check quality, security audits, tests and Vite build
+              run: composer run check

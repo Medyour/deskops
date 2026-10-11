@@ -1,8 +1,10 @@
 # DeskOps
 
+[![CI](https://github.com/Medyour/deskops/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Medyour/deskops/actions/workflows/ci.yml)
+
 DeskOps est un mini-centre de support client pour une petite équipe. Ce projet vitrine démontrera des accès par rôle, un workflow de tickets, des règles métier testées, une chronologie d’activité et un tableau de bord.
 
-## État actuel — étape 1
+## État actuel — fondations et CI
 
 Les fondations sont prêtes : vitrine responsive, connexion/déconnexion, « se souvenir de moi », récupération et confirmation du mot de passe, rôles **administrateur** et **agent**, espaces protégés et comptes de démonstration locaux.
 
@@ -12,10 +14,10 @@ Le contrat complet se trouve dans [docs/MVP.md](docs/MVP.md), les choix de struc
 
 ## Stack
 
-- PHP **8.3+**, Laravel **13**, Fortify ; Composer 2.
+- PHP **8.3+** (CI sous 8.3), Laravel **13**, Fortify ; Composer **2.9.5** (`.composer-version`).
 - SQLite pour les données, sessions et cache ; aucune infrastructure additionnelle.
 - Blade, Tailwind CSS **4**, Vite **8**, fontes système.
-- Node **24 LTS** conseillé (minimum **22.12**), npm ; versions exactes dans les lockfiles.
+- Node **24.19.0** (`.node-version`, minimum compatible **22.12**) et npm **11.17.0** (`packageManager` dans `package.json`) ; dépendances exactes dans les lockfiles.
 - Pest **4** / PHPUnit, Laravel Pint et Prettier.
 - Laravel Boost en dépendance de développement, avec instructions du projet dans `AGENTS.md`.
 
@@ -85,7 +87,7 @@ Le formulaire « Mot de passe oublié » utilise Fortify et le broker Laravel. A
 
 La clé applicative, les hashes et les sessions nécessaires existent exclusivement dans les fichiers locaux ignorés. `.env.example` contient une clé vide et aucun secret. Aucun service externe n’est configuré.
 
-## Qualité et CI locale
+## Qualité et CI GitHub Actions
 
 Avant chaque commit :
 
@@ -93,7 +95,13 @@ Avant chaque commit :
 composer run check
 ```
 
-Cette commande exécute, dans l’ordre : validation stricte de Composer, contrôle du format PHP, suite Laravel, contrôle Prettier et build Vite. Elle s’arrête si un contrôle échoue. Aucun service de CI distant n’est configuré.
+Cette commande exécute, dans l’ordre : validation stricte de Composer, vérification des exigences de la plateforme, audit Composer (y compris les dépendances de développement), Pint en vérification, suite Laravel, audit npm, Prettier en vérification, le script de tests JavaScript s’il est défini, puis le build Vite. Elle s’arrête si un contrôle échoue. Aucun audit ou test présent n’est rendu facultatif.
+
+Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) exécute l’installation `composer run setup` sur une base SQLite neuve, puis exactement `composer run check`. Il tourne sous Ubuntu 24.04 et PHP 8.3, vérifie `pdo_sqlite`/`sqlite3` et les versions Composer, Node et npm, puis installe les dépendances depuis les deux lockfiles. Il se déclenche sur les pushes vers `main` et `agent/**`, sur les PR vers `main` (brouillons compris), et manuellement.
+
+Les actions sont épinglées par SHA. Le jeton automatique GitHub est limité à la lecture du dépôt, sans persistance des identifiants Git. Seuls les caches de téléchargement Composer/npm sont réutilisés ; ni `vendor`, ni `node_modules`, ni `.env`, ni base SQLite ne sont mis en cache. Aucun secret GitHub supplémentaire ni étape de déploiement ne sont nécessaires.
+
+Le badge ci-dessus vise `main` et reflétera la CI de cette branche après fusion du workflow. La PR brouillon dispose de ses propres contrôles. Pour ce dépôt privé, le badge est consultable par les personnes autorisées.
 
 Commandes ciblées :
 
@@ -108,7 +116,7 @@ composer audit
 npm audit
 ```
 
-Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale. Ils couvrent les accès, les deux rôles, les refus de privilèges, CSRF, la limitation de connexion, la rotation de session, la récupération du mot de passe et les comptes de démo. Aucune logique JavaScript applicative ne justifie encore une suite JS ; elle sera ajoutée avec le premier îlot interactif.
+Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale. Ils couvrent les accès, les deux rôles, les refus de privilèges, CSRF, la limitation de connexion, la rotation de session, la récupération du mot de passe et les comptes de démo. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
 
 ## Fichiers à connaître
 
@@ -126,13 +134,16 @@ Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale. Il
 | `resources/views`                              | Vitrine, formulaires et espaces équipe      |
 | `tests/Feature`                                | Scénarios HTTP, sécurité et démonstration   |
 | `composer.json`, `package.json`                | Scripts de développement et de qualité      |
+| `.github/workflows/ci.yml`                     | CI GitHub Actions                           |
+| `.node-version`, `.composer-version`           | Versions des outils de développement et CI  |
 
 ## Feuille de route
 
 1. **Fondations — livré** : environnement, authentification, rôles, vitrine, documentation, outillage et premier commit local.
-2. **Tickets et workflow** : migrations, enums, policies, validations, liste/détail/création, priorités, assignation et transitions ; tests des refus et de la concurrence.
-3. **Collaboration et audit** : commentaires internes immuables, historique transactionnel et jeu de 12 tickets déterministes.
-4. **Recherche et pilotage** : filtres persistants, pagination, indicateurs à horloge testable et éventuel îlot Vue justifié.
-5. **Finition de la vitrine** : parcours de démonstration, vérifications clavier/mobile et documentation finale.
+2. **Dépôt privé et CI** : publication sur `Medyour/deskops`, installation reproductible, audits bloquants et contrôles GitHub Actions ; intégration via PR brouillon.
+3. **Tickets et workflow** : migrations, enums, policies, validations, liste/détail/création, priorités, assignation et transitions ; tests des refus et de la concurrence.
+4. **Collaboration et audit** : commentaires internes immuables, historique transactionnel et jeu de 12 tickets déterministes.
+5. **Recherche et pilotage** : filtres persistants, pagination, indicateurs à horloge testable et éventuel îlot Vue justifié.
+6. **Finition de la vitrine** : parcours de démonstration, vérifications clavier/mobile et documentation finale.
 
-Aucun dépôt GitHub, hébergement ou domaine n’est créé dans cette étape. Le contrat détaillé du MVP fait foi pour les étapes suivantes.
+Le dépôt GitHub est privé : [`Medyour/deskops`](https://github.com/Medyour/deskops). La CI ne publie aucun site ni artefact de déploiement. Aucun hébergement ou domaine n’est configuré. Le contrat détaillé du MVP fait foi pour les prochaines étapes métier.
