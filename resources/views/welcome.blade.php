@@ -9,7 +9,7 @@
             <p class="mt-7 max-w-lg text-lg leading-relaxed text-slate-600">DeskOps réunit les demandes, les échanges et les décisions dans un espace pensé pour les petites équipes support.</p>
             <div class="mt-9 flex flex-wrap gap-3">
                 @auth
-                    <a href="{{ route('dashboard') }}" class="button">Ouvrir mon espace <span aria-hidden="true" class="ml-3">→</span></a>
+                    <a href="{{ route('dashboard') }}" class="button">Ouvrir le tableau de bord <span aria-hidden="true" class="ml-3">→</span></a>
                 @else
                     <a href="{{ route('login') }}" class="button">Accéder à mon espace <span aria-hidden="true" class="ml-3">→</span></a>
                 @endauth
@@ -20,12 +20,12 @@
         <aside aria-labelledby="foundation-title" class="rounded-3xl bg-teal-900 p-7 text-white sm:p-9">
             <p class="text-xs font-medium tracking-widest text-teal-200 uppercase">01 / Fondations</p>
             <h2 id="foundation-title" class="mt-6 text-2xl font-semibold tracking-tight">Le point de départ<br>d’un support organisé.</h2>
-            <p class="mt-4 text-sm leading-relaxed text-teal-100">L’espace équipe, les accès et le traitement des tickets sont prêts. Les indicateurs du tableau de bord viendront à la prochaine étape.</p>
+            <p class="mt-4 text-sm leading-relaxed text-teal-100">L’espace équipe, les accès et le traitement des tickets sont prêts. Les indicateurs du tableau de bord sont disponibles.</p>
             <ul class="mt-8 space-y-4 text-sm">
                 <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Authentification</span><span class="rounded-full bg-white/10 px-3 py-1 text-xs">Disponible</span></li>
                 <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Rôles de l’équipe</span><span class="rounded-full bg-white/10 px-3 py-1 text-xs">Disponible</span></li>
                 <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Workflow des tickets</span><span class="text-xs text-teal-200">Disponible</span></li>
-                <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Tableau de bord</span><span class="text-xs text-teal-200">À venir</span></li>
+                <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Tableau de bord</span><span class="text-xs text-teal-200">Disponible</span></li>
             </ul>
         </aside>
     </div>

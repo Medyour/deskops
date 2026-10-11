@@ -4,13 +4,15 @@
 
 DeskOps est un mini-centre de support **interne**, destiné à une petite équipe. Il démontre l’authentification, les autorisations, un workflow métier explicite et sa traçabilité. Le client est un contact du ticket, sans compte ni portail.
 
-**Étape 1 livrée :** vitrine, connexion/déconnexion, session persistante optionnelle, récupération et confirmation du mot de passe, deux rôles, espaces protégés, trois comptes locaux, outillage et tests. Le tableau de bord actuel est un écran d’accueil sans indicateurs métier.
+**Étape 1 livrée :** vitrine, connexion/déconnexion, session persistante optionnelle, récupération et confirmation du mot de passe, deux rôles, espaces protégés, trois comptes locaux, outillage et tests.
 
 **Cœur métier livré :** schéma des tickets, enums, autorisations, création, assignation, transitions, ajout interne de commentaires, historique immuable et fixture déterministe. Les mutations disposent de points d’entrée web authentifiés, reliés aux pages de tickets.
 
 **Espace tickets livré :** liste paginée et filtrable, création, détail, édition des champs/priorités, commentaires, chronologie et actions autorisées. Les conflits 409 présentent la saisie non enregistrée et les valeurs actuelles, avec reprise explicite après vérification.
 
-**MVP restant :** indicateurs du tableau de bord et finition de la vitrine.
+**Tableau de bord livré :** accueil authentifié, indicateurs globaux, répartitions, charge active par agent, file priorisée, tickets et activités récents ; vue « Mes tickets » pour les agents. Les liens réutilisent les mêmes filtres de lecture que les calculs.
+
+**MVP restant :** finition de la vitrine.
 
 Hors périmètre : inscription publique, gestion graphique des comptes/rôles, portail client, e-mail entrant ou sortant des tickets, pièces jointes, SLA, notifications métier, chat, temps réel, API publique, multi-tenant, suppression de tickets et automatisation des statuts. La récupération d’accès utilise le transport mail local de Laravel.
 
@@ -94,20 +96,33 @@ SQLite refuse également les mises à jour, suppressions et remplacements d’ac
 
 Liste paginée par 20, nouveaux tickets d’abord (`created_at DESC, id DESC`). Recherche `q` (0–100 caractères, espaces externes retirés) sur référence exacte, titre, nom et e-mail du contact. La recherche de référence est insensible à la casse. Pour les textes, recherche par sous-chaîne avec la casse ASCII de SQLite ; la recherche sans accents n’est pas promise dans le MVP. Les caractères `%` et `_` sont traités littéralement, pas comme jokers SQL.
 
-Filtres GET combinables avec un ET : `status`, `priority`, `assignee` (id d’agent, `me`, `unassigned`). Les valeurs inconnues sont rejetées avec une erreur de validation ; elles ne disparaissent pas silencieusement. Les paramètres restent dans l’URL et dans les liens de pagination. Un bouton « Réinitialiser » efface les filtres. Afficher le nombre de résultats et un état vide utile. Aucun tri ou recherche côté navigateur nécessaire.
+Filtres GET combinables avec un ET : `status`, `priority`, `assignee` (id d’agent, `me`, `unassigned`) et `queue` (vue opérationnelle définie ci-dessous). Les valeurs inconnues sont rejetées avec une erreur de validation ; elles ne disparaissent pas silencieusement. Les paramètres restent dans l’URL et dans les liens de pagination. Un bouton « Réinitialiser » efface les filtres. Afficher le nombre de résultats et un état vide utile. Aucun tri ou recherche côté navigateur nécessaire.
 
 ## Tableau de bord métier
 
-Les métriques couvrent tous les tickets accessibles. La vue optionnelle « Mes tickets » applique `assigned_to = utilisateur courant` pour un agent. Aucun pourcentage de performance individuel.
+`GET /dashboard` est l’accueil après connexion et depuis le logo authentifié. La vue Équipe couvre tous les tickets accessibles pour les deux rôles. `scope=mine`, réservé aux agents, applique `assigned_to = utilisateur courant` à tous les indicateurs, répartitions et files. La charge ne montre alors que l’agent courant ; les activités concernent les tickets qui lui sont actuellement assignés, quel que soit leur acteur. Ce périmètre n’est pas un filtre sur l’auteur de l’activité. Un administrateur n’est pas assignable et ne dispose pas de vue personnelle. Les vues inconnues sont refusées. Aucun pourcentage de performance individuel.
 
-- **À traiter** : Nouveau + En cours + En attente du client.
-- **Non assignés** : tickets à traiter sans agent.
-- **Urgents actifs** : tickets à traiter de priorité Urgente.
-- **Résolus sur 7 jours** : statut actuel Résolu ou Fermé, `resolved_at >= maintenant - 7 jours` et `<= maintenant` ; bornes incluses.
-- Répartition par statut et charge par agent : nombre de tickets à traiter par agent ; file non assignée séparée.
-- Cinq dernières activités avec lien vers le ticket.
+Précision de vocabulaire : l’ancien ensemble « à traiter » désigne les **tickets actifs**. Le titre de file **À traiter** désigne désormais le sous-ensemble priorisé ci-dessous ; il ne change aucune règle de mutation ou de statut.
 
-Les heures sont stockées en UTC et affichées en Europe/Paris. Les tests figent l’horloge. Le jeu de démonstration conserve ses dates fixes : les métriques temporelles évoluent naturellement avec la date réelle, ce qui est explicité dans la démo. Un mini-graphe Vue n’est ajouté que si sa sélection/interaction apporte quelque chose que le HTML ne couvre pas.
+| Indicateur / file         | Définition exacte                                                                                                                        | Filtre `queue`      |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
+| Total                     | Tous les tickets du périmètre, y compris Résolu et Fermé                                                                                 | Aucun               |
+| Tickets actifs            | Statut Nouveau, En cours ou En attente du client                                                                                         | `active`            |
+| Non assignés              | Tickets actifs dont `assigned_to IS NULL`                                                                                                | `unassigned`        |
+| Priorités élevées actives | Tickets actifs de priorité Haute ou Urgente                                                                                              | `high_priority`     |
+| Urgents actifs            | Tickets actifs de priorité Urgente                                                                                                       | `urgent`            |
+| Résolus sur 7 jours       | Statut actuel Résolu ou Fermé ; `resolved_at` entre maintenant UTC moins 7 jours et maintenant UTC, bornes incluses ; aucune date future | `resolved_recently` |
+| À traiter                 | Tickets actifs ET (non assignés OU priorité Haute/Urgente), chaque ticket compté une seule fois                                          | `attention`         |
+
+Les répartitions par statut et par priorité couvrent tous les tickets du périmètre, avec les catégories vides affichées à zéro. La charge par agent compte uniquement ses tickets actifs ; les agents sans charge restent visibles, les administrateurs sont exclus et la file non assignée est séparée. Tri : charge décroissante, nom puis identifiant croissants.
+
+La file À traiter montre cinq tickets maximum : Urgente, Haute, Normale, Basse, puis `created_at ASC, id ASC` à priorité égale. Son lien vers la liste conserve le tri habituel de la liste (créations les plus récentes), sans perdre l’appartenance à la file. Les cinq tickets récents sont les dernières **créations**, tous statuts, ordonnées par `created_at DESC, id DESC`. Les cinq dernières activités suivent également `created_at DESC, id DESC` et relient au détail ; seules référence, sujet, type, acteur et date sont affichés, sans métadonnées ni corps de commentaire.
+
+Les liens vers les compteurs/files/répartitions reprennent `assignee=me` dans la vue personnelle. Les filtres opérationnels se combinent avec la recherche, le statut, la priorité et l’assignation, persistent dans l’URL/pagination et restent sélectionnés dans le formulaire de liste. Une file non assignée combinée à Mes tickets est correctement vide.
+
+La page est calculée à chaque chargement, sans cache métier ni rafraîchissement automatique. Sur base vide, compteurs et catégories valent zéro, les agents existants ont une charge nulle et chaque file affiche un état vide. Aucun SLA, délai implicite, échéance ou durée moyenne n’est calculé.
+
+Les heures sont stockées en UTC et affichées en Europe/Paris. Les tests figent l’horloge. Le jeu de démonstration conserve ses dates fixes : les métriques temporelles évoluent naturellement avec la date réelle, ce qui est explicité dans la démo. Les répartitions utilisent des listes textuelles accessibles en Blade, sans dépendre des couleurs ou de JavaScript ; aucun graphique Vue n’est nécessaire.
 
 ## Données de démonstration
 
@@ -136,7 +151,7 @@ Reconstruction sur une base de démonstration neuve uniquement : identifiants 1�
 
 Pour les tickets non nouveaux : assignation à +1 minute, passage à En cours à +2 minutes, puis En attente/Résolu à +3 minutes, Fermé à +7 minutes si applicable. Les transitions initiales sont effectuées par Camille avec le motif fixe `Scénario de démonstration` lorsque nécessaire. Commentaires à +5 minutes (Camille : `Demande enregistrée dans le support.`) et +6 minutes (agent assigné, sinon Camille : `Suivi de démonstration ajouté.`), avant l’éventuelle fermeture pour respecter la lecture seule.
 
-Résultat attendu : 12 tickets, 24 commentaires, 60 activités (12 créations + 9 assignations + 15 transitions + 24 commentaires). Avec horloge figée au 20 janvier 2026 à 12:00 UTC : 9 à traiter, 3 non assignés, 1 urgent actif, 3 résolus sur 7 jours ; charges Alex 3 / Sam 3 / file non assignée 3. Le futur reset sera explicite et réservé à une base locale jetable, jamais exécuté automatiquement à l’installation.
+Résultat attendu : 12 tickets, 24 commentaires, 60 activités (12 créations + 9 assignations + 15 transitions + 24 commentaires). Avec horloge figée au 20 janvier 2026 à 12:00 UTC : total 12, actifs 9, non assignés 3, priorités élevées actives 3, urgents actifs 1, résolus sur 7 jours 3 ; charges Alex 3 / Sam 3 / file non assignée 3. La file À traiter contient 5 tickets, aperçu `DS-0003, DS-0005, DS-0007, DS-0001, DS-0002`. Répartition statuts : Nouveau 3, En cours 4, En attente 2, Résolu 2, Fermé 1 ; priorités : Basse 3, Normale 5, Haute 3, Urgente 1. Les créations récentes sont `DS-0012` à `DS-0008` ; les activités récentes ont les identifiants `60, 59, 58, 57, 56`. Au 11 octobre 2026, Résolus sur 7 jours vaut zéro ; les autres comptes sont inchangés. Le futur reset sera explicite et réservé à une base locale jetable, jamais exécuté automatiquement à l’installation.
 
 L’initialisation exige une table `tickets` vide dont les identifiants n’ont jamais été utilisés. Les relances reconnaissent la fixture par ses activités de création immuables et conservent les tickets modifiés, les commentaires, l’historique et les tickets supplémentaires. Une fixture partielle ou des tickets sans cette origine sont refusés sans écrasement, sans création partielle de comptes et sans renouvellement des accès. Aucun reset n’est fourni dans cette étape. `setup` applique seulement les migrations ; il ne lance pas le seed.
 

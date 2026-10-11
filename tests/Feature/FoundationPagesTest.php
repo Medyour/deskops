@@ -1,10 +1,10 @@
 <?php
 
-test('the landing page describes the available foundation and future scope', function () {
+test('the landing page describes the available foundation and dashboard', function () {
     $this->get(route('home'))->assertOk()
         ->assertSee('Chaque demande.')
         ->assertSee('Fondations')
-        ->assertSee('À venir')
+        ->assertSee('Les indicateurs du tableau de bord sont disponibles.')
         ->assertSee(route('login'), false);
 });
 
