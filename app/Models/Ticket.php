@@ -5,7 +5,6 @@ namespace App\Models;
 use App\Enums\TicketPriority;
 use App\Enums\TicketQueue;
 use App\Enums\TicketStatus;
-use Carbon\CarbonImmutable;
 use Database\Factories\TicketFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Builder;
@@ -67,13 +66,10 @@ class Ticket extends Model
      * @param  Builder<Ticket>  $query
      * @return Builder<Ticket>
      */
-    public function scopeInQueue(Builder $query, TicketQueue $queue, ?CarbonImmutable $now = null): Builder
+    public function scopeInQueue(Builder $query, TicketQueue $queue): Builder
     {
-        if ($queue === TicketQueue::ResolvedRecently) {
-            $now ??= CarbonImmutable::now('UTC');
-
-            return $query->whereIn('status', [TicketStatus::Resolved, TicketStatus::Closed])
-                ->whereBetween('resolved_at', [$now->subDays(7), $now]);
+        if ($queue === TicketQueue::Completed) {
+            return $query->whereIn('status', TicketQueue::completedStatuses());
         }
 
         $query->whereIn('status', TicketQueue::activeStatuses());

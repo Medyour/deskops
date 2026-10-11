@@ -63,12 +63,12 @@ Les pages protégées sont `GET /tickets`, `/tickets/create`, `/tickets/{ticket}
 - **Actifs** : Nouveau, En cours ou En attente du client ; les tickets Résolu/Fermé sont exclus.
 - **Non assignés** : actifs sans agent ; **priorités élevées** : actifs de priorité Haute ou Urgente ; **urgents actifs** : priorité Urgente uniquement.
 - **À traiter** : union des actifs non assignés et des actifs de priorité Haute/Urgente, sans double comptage. Aperçu de cinq tickets : priorité décroissante, création la plus ancienne, identifiant croissant.
-- **Résolus sur 7 jours** : statut actuel Résolu/Fermé et date de résolution entre maintenant UTC moins sept jours et maintenant, bornes incluses.
+- **Terminés** : tous les tickets actuellement au statut Résolu ou Fermé, quelle que soit leur date de résolution.
 - Les répartitions couvrent tous les statuts du périmètre. La charge par agent compte uniquement ses tickets actifs. Les créations et activités récentes sont triées par date puis identifiant décroissants et limitées à cinq.
 
 Les liens ouvrent la liste avec les filtres correspondants (`queue`, statut, priorité, assignation), conservés dans la pagination et combinables avec la recherche. Les répartitions restent textuelles, les états vides explicites. Aucun SLA, échéance, durée moyenne ou classement de performance n’est calculé.
 
-Avec la fixture intacte : **12 tickets, 9 actifs, 3 non assignés, 3 priorités élevées actives, 1 urgent actif, 5 dans la file À traiter** ; charge Alex **3**, Sam **3**. Le compteur Résolus sur 7 jours vaut **3 au 20 janvier 2026 à 12:00 UTC**, mais **0 au 11 octobre 2026**, car les dates de démo restent fixes. Les définitions et résultats détaillés sont dans [docs/MVP.md](docs/MVP.md).
+Avec la fixture intacte : **12 tickets, 9 actifs, 3 non assignés actifs, 3 priorités élevées actives, 1 urgent actif, 3 terminés, 5 dans la file À traiter** ; charge active Alex **3**, Sam **3**. Ces valeurs ne dépendent pas de la date de consultation ; les dates historiques de la démo restent fixes. Les définitions et résultats détaillés sont dans [docs/MVP.md](docs/MVP.md).
 
 ### Ouvrir l’application
 

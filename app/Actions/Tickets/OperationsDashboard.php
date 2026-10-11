@@ -18,7 +18,7 @@ class OperationsDashboard
     /**
      * @return array{
      *   mine: bool, generatedAt: CarbonImmutable, filters: array{assignee?: string},
-     *   metrics: array{total: int, active: int, unassigned: int, high_priority: int, urgent: int, attention: int, resolved_recently: int},
+     *   metrics: array{total: int, active: int, unassigned: int, high_priority: int, urgent: int, attention: int, completed: int},
      *   statuses: array<string, int>, priorities: array<string, int>, agents: Collection<int, User>,
      *   attentionTickets: Collection<int, Ticket>, recentTickets: Collection<int, Ticket>, recentActivities: Collection<int, TicketActivity>
      * }
@@ -30,7 +30,7 @@ class OperationsDashboard
         $tickets = Ticket::query()->when($mine, fn (Builder $query): Builder => $query->where('assigned_to', $viewer->id));
         $statuses = array_fill_keys(array_column(TicketStatus::cases(), 'value'), 0);
         $priorities = array_fill_keys(array_column(TicketPriority::cases(), 'value'), 0);
-        $metrics = ['total' => 0, 'active' => 0, 'unassigned' => 0, 'high_priority' => 0, 'urgent' => 0, 'attention' => 0, 'resolved_recently' => 0];
+        $metrics = ['total' => 0, 'active' => 0, 'unassigned' => 0, 'high_priority' => 0, 'urgent' => 0, 'attention' => 0, 'completed' => 0];
 
         $groups = (clone $tickets)->toBase()->selectRaw('status, priority, COUNT(*) AS total, SUM(CASE WHEN assigned_to IS NULL THEN 1 ELSE 0 END) AS unassigned')
             ->groupBy('status', 'priority')->get();
@@ -39,6 +39,9 @@ class OperationsDashboard
             $statuses[$group->status] += $count;
             $priorities[$group->priority] += $count;
             $metrics['total'] += $count;
+            if (in_array($group->status, TicketQueue::completedStatuses(), true)) {
+                $metrics['completed'] += $count;
+            }
             if (in_array($group->status, TicketQueue::activeStatuses(), true)) {
                 $highPriority = in_array($group->priority, TicketQueue::attentionPriorities(), true);
                 $metrics['active'] += $count;
@@ -48,7 +51,6 @@ class OperationsDashboard
                 $metrics['attention'] += $highPriority ? $count : (int) $group->unassigned;
             }
         }
-        $metrics['resolved_recently'] = (clone $tickets)->inQueue(TicketQueue::ResolvedRecently, $now)->count();
 
         $agents = User::query()->where('role', UserRole::Agent)->when($mine, fn (Builder $query): Builder => $query->whereKey($viewer->id))
             ->select(['id', 'name'])->withCount(['assignedTickets as active_tickets_count' => fn (Builder $query): Builder => $query->inQueue(TicketQueue::Active)])

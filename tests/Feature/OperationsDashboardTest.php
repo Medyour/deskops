@@ -2,6 +2,8 @@
 
 use App\Actions\Tickets\OperationsDashboard;
 use App\Enums\TicketActivityType;
+use App\Enums\TicketPriority;
+use App\Enums\TicketQueue;
 use App\Enums\TicketStatus;
 use App\Models\Ticket;
 use App\Models\TicketActivity;
@@ -14,14 +16,13 @@ test('the dashboard requires authentication even with a personal scope', functio
 });
 
 test('the demo dashboard has exact global metrics distributions loads and recent queues for both roles', function (string $email) {
-    $this->travelTo('2026-01-20 12:00:00');
     $this->seed(DatabaseSeeder::class);
     $viewer = User::where('email', $email)->firstOrFail();
 
     $response = $this->actingAs($viewer)->get(route('dashboard'));
 
     $response->assertOk()->assertSee('Tableau de bord')->assertViewHas('mine', false)
-        ->assertViewHas('metrics', ['total' => 12, 'active' => 9, 'unassigned' => 3, 'high_priority' => 3, 'urgent' => 1, 'attention' => 5, 'resolved_recently' => 3])
+        ->assertViewHas('metrics', ['total' => 12, 'active' => 9, 'unassigned' => 3, 'high_priority' => 3, 'urgent' => 1, 'attention' => 5, 'completed' => 3])
         ->assertViewHas('statuses', ['new' => 3, 'in_progress' => 4, 'waiting_customer' => 2, 'resolved' => 2, 'closed' => 1])
         ->assertViewHas('priorities', ['low' => 3, 'normal' => 5, 'high' => 3, 'urgent' => 1]);
     expect($response->viewData('agents')->map(fn (User $agent): array => [$agent->name, $agent->active_tickets_count])->all())->toBe([['Alex Bernard', 3], ['Sam Dubois', 3]]);
@@ -37,7 +38,7 @@ test('an empty ticket database renders zero counts all categories and useful emp
 
     $response = $this->actingAs($agent)->get(route('dashboard'));
 
-    $response->assertOk()->assertViewHas('metrics', ['total' => 0, 'active' => 0, 'unassigned' => 0, 'high_priority' => 0, 'urgent' => 0, 'attention' => 0, 'resolved_recently' => 0])
+    $response->assertOk()->assertViewHas('metrics', ['total' => 0, 'active' => 0, 'unassigned' => 0, 'high_priority' => 0, 'urgent' => 0, 'attention' => 0, 'completed' => 0])
         ->assertViewHas('statuses', ['new' => 0, 'in_progress' => 0, 'waiting_customer' => 0, 'resolved' => 0, 'closed' => 0])
         ->assertViewHas('priorities', ['low' => 0, 'normal' => 0, 'high' => 0, 'urgent' => 0])
         ->assertSee('Aucune demande dans cette file.')->assertSee('Aucun ticket dans cette vue.')->assertSee('Aucune activité enregistrée dans cette vue.');
@@ -51,7 +52,6 @@ test('a team without agents still renders a dashboard', function () {
 });
 
 test('only the three active statuses contribute to workload and high priority attention', function (TicketStatus $status, bool $active) {
-    $this->freezeTime();
     $agent = User::factory()->create();
     Ticket::factory()->inStatus($status)->assignedTo($agent)->create(['priority' => 'urgent', 'created_by' => $agent->id]);
 
@@ -60,6 +60,7 @@ test('only the three active statuses contribute to workload and high priority at
     $response->assertOk();
     $metrics = $response->viewData('metrics');
     expect($metrics['total'])->toBe(1);
+    expect($metrics['completed'])->toBe($active ? 0 : 1);
     expect([$metrics['active'], $metrics['high_priority'], $metrics['urgent'], $metrics['attention']])->toBe($active ? [1, 1, 1, 1] : [0, 0, 0, 0]);
     expect($response->viewData('agents')->sole()->active_tickets_count)->toBe($active ? 1 : 0);
 })->with([
@@ -68,7 +69,6 @@ test('only the three active statuses contribute to workload and high priority at
 ]);
 
 test('attention combines unassigned and high priorities once while keeping ordinary assigned active tickets out', function () {
-    $this->freezeTime();
     $agent = User::factory()->create();
     $urgent = Ticket::factory()->create(['priority' => 'urgent', 'created_by' => $agent->id]);
     $normal = Ticket::factory()->create(['created_by' => $agent->id]);
@@ -77,19 +77,18 @@ test('attention combines unassigned and high priorities once while keeping ordin
 
     $data = app(OperationsDashboard::class)->read($agent);
 
-    expect($data['metrics'])->toBe(['total' => 4, 'active' => 4, 'unassigned' => 2, 'high_priority' => 2, 'urgent' => 1, 'attention' => 3, 'resolved_recently' => 0]);
+    expect($data['metrics'])->toBe(['total' => 4, 'active' => 4, 'unassigned' => 2, 'high_priority' => 2, 'urgent' => 1, 'attention' => 3, 'completed' => 0]);
     expect($data['attentionTickets']->pluck('id')->all())->toBe([$urgent->id, $high->id, $normal->id]);
 });
 
 test('personal scope follows current assignment for every count list activity and link', function () {
-    $this->travelTo('2026-01-20 12:00:00');
     $this->seed(DatabaseSeeder::class);
     $sam = User::where('email', 'sam@deskops.example')->firstOrFail();
 
     $response = $this->actingAs($sam)->get(route('dashboard', ['scope' => 'mine']));
 
     $response->assertOk()->assertViewHas('mine', true)
-        ->assertViewHas('metrics', ['total' => 4, 'active' => 3, 'unassigned' => 0, 'high_priority' => 2, 'urgent' => 0, 'attention' => 2, 'resolved_recently' => 1])
+        ->assertViewHas('metrics', ['total' => 4, 'active' => 3, 'unassigned' => 0, 'high_priority' => 2, 'urgent' => 0, 'attention' => 2, 'completed' => 1])
         ->assertViewHas('statuses', ['new' => 0, 'in_progress' => 2, 'waiting_customer' => 1, 'resolved' => 1, 'closed' => 0])
         ->assertViewHas('priorities', ['low' => 0, 'normal' => 1, 'high' => 3, 'urgent' => 0])
         ->assertSee(route('tickets.index', ['assignee' => 'me', 'queue' => 'unassigned']))
@@ -103,7 +102,6 @@ test('personal scope follows current assignment for every count list activity an
 });
 
 test('agent load includes zero workloads excludes administrators and sorts by load then name and ID', function () {
-    $this->freezeTime();
     $admin = User::factory()->administrator()->create();
     $zero = User::factory()->create(['name' => 'Agent Alpha']);
     $first = User::factory()->create(['name' => 'Agent Beta']);
@@ -130,33 +128,56 @@ test('invalid dashboard scopes are rejected without silently changing the view',
     'admin is not assignable' => [['scope' => 'mine'], true, 'Choisissez la vue Équipe ou Mes tickets.'],
 ]);
 
-test('recent resolution uses current terminal status with inclusive UTC bounds and no future resolutions', function () {
-    $this->travelTo('2026-01-20 12:00:00');
+test('completed tickets depend only on current terminal status regardless of historical resolution dates', function () {
     $agent = User::factory()->create();
-    $lower = Ticket::factory()->inStatus(TicketStatus::Resolved)->assignedTo($agent)->create(['resolved_at' => '2026-01-13 12:00:00']);
-    $upper = Ticket::factory()->inStatus(TicketStatus::Closed)->assignedTo($agent)->create(['resolved_at' => '2026-01-20 12:00:00']);
-    Ticket::factory()->inStatus(TicketStatus::Resolved)->assignedTo($agent)->create(['resolved_at' => '2026-01-13 11:59:59']);
-    Ticket::factory()->inStatus(TicketStatus::Resolved)->assignedTo($agent)->create(['resolved_at' => '2026-01-20 12:00:01']);
+    $resolved = Ticket::factory()->inStatus(TicketStatus::Resolved)->assignedTo($agent)->create(['resolved_at' => '2020-01-15 12:00:00', 'created_at' => '2020-01-15 11:00:00']);
+    $closed = Ticket::factory()->inStatus(TicketStatus::Closed)->assignedTo($agent)->create(['resolved_at' => '2021-01-15 12:00:00', 'closed_at' => '2021-01-16 12:00:00', 'created_at' => '2021-01-15 11:00:00']);
     Ticket::factory()->inStatus(TicketStatus::InProgress)->assignedTo($agent)->create();
+    Ticket::factory()->inStatus(TicketStatus::WaitingCustomer)->assignedTo($agent)->create();
+    Ticket::factory()->create();
 
     $data = app(OperationsDashboard::class)->read($agent);
 
-    expect($data['metrics']['resolved_recently'])->toBe(2);
-    $this->actingAs($agent)->get(route('tickets.index', ['queue' => 'resolved_recently']))->assertOk()
-        ->assertViewHas('tickets', fn ($tickets): bool => $tickets->pluck('id')->all() === [$upper->id, $lower->id]);
+    expect($data['metrics']['completed'])->toBe(2);
+    expect($data['metrics']['active'])->toBe(3);
+    $this->actingAs($agent)->get(route('tickets.index', ['queue' => 'completed']))->assertOk()
+        ->assertViewHas('tickets', fn ($tickets): bool => $tickets->pluck('id')->all() === [$closed->id, $resolved->id]);
 });
 
-test('fixed demo dates do not pretend to resolve tickets in the current week', function () {
-    $this->travelTo('2026-10-11 12:00:00');
+test('personal dashboard and filtered links cannot impersonate another agent through query parameters', function (string $email, int $total, int $completed, array $completedIds) {
     $this->seed(DatabaseSeeder::class);
-    $viewer = User::where('email', 'admin@deskops.example')->firstOrFail();
+    $viewer = User::where('email', $email)->firstOrFail();
+    $other = User::where('role', 'agent')->whereKeyNot($viewer->id)->firstOrFail();
+    $spoofed = ['assignee' => $other->id, 'user_id' => $other->id, 'viewer_id' => $other->id];
 
-    $this->actingAs($viewer)->get(route('dashboard'))->assertOk()->assertSee('Les dates fixes de démonstration')
-        ->assertViewHas('metrics', fn (array $metrics): bool => $metrics['resolved_recently'] === 0 && $metrics['active'] === 9);
+    $response = $this->actingAs($viewer)->get(route('dashboard', ['scope' => 'mine', ...$spoofed]));
+
+    $response->assertOk()->assertSee('Terminés')->assertViewHas('mine', true)
+        ->assertViewHas('metrics', fn (array $metrics): bool => $metrics['total'] === $total && $metrics['completed'] === $completed)
+        ->assertViewHas('filters', ['assignee' => 'me'])
+        ->assertSee(route('tickets.index', ['assignee' => 'me', 'queue' => 'completed']));
+    expect($response->viewData('agents')->sole()->id)->toBe($viewer->id);
+    expect($response->viewData('recentTickets')->pluck('assigned_to')->unique()->all())->toBe([$viewer->id]);
+    $this->get(route('tickets.index', ['assignee' => 'me', 'queue' => 'completed', 'user_id' => $other->id, 'viewer_id' => $other->id]))->assertOk()
+        ->assertViewHas('tickets', fn ($tickets): bool => $tickets->pluck('id')->all() === $completedIds)
+        ->assertViewHas('filters', ['assignee' => 'me', 'queue' => 'completed']);
+})->with(['Alex' => ['alex@deskops.example', 5, 2, [12, 10]], 'Sam' => ['sam@deskops.example', 4, 1, [11]]]);
+
+test('personal scope without assignments stays empty even when the team has completed and active tickets', function () {
+    $viewer = User::factory()->create();
+    Ticket::factory()->inStatus(TicketStatus::Closed)->create();
+    Ticket::factory()->create(['priority' => 'urgent']);
+
+    $response = $this->actingAs($viewer)->get(route('dashboard', ['scope' => 'mine']));
+
+    $response->assertOk()->assertViewHas('metrics', ['total' => 0, 'active' => 0, 'unassigned' => 0, 'high_priority' => 0, 'urgent' => 0, 'attention' => 0, 'completed' => 0]);
+    expect($response->viewData('recentTickets'))->toBeEmpty();
+    expect($response->viewData('recentActivities'))->toBeEmpty();
+    expect($response->viewData('attentionTickets'))->toBeEmpty();
+    expect($response->viewData('agents')->sole()->active_tickets_count)->toBe(0);
 });
 
 test('the dashboard links to each exact operational queue status priority and agent load', function () {
-    $this->travelTo('2026-01-20 12:00:00');
     $this->seed(DatabaseSeeder::class);
     $viewer = User::where('email', 'admin@deskops.example')->firstOrFail();
     $alex = User::where('email', 'alex@deskops.example')->firstOrFail();
@@ -164,16 +185,25 @@ test('the dashboard links to each exact operational queue status priority and ag
     $response = $this->actingAs($viewer)->get(route('dashboard'));
 
     $response->assertOk();
-    foreach (['active', 'unassigned', 'high_priority', 'urgent', 'attention', 'resolved_recently'] as $queue) {
-        $response->assertSee(route('tickets.index', ['queue' => $queue]));
+    foreach (TicketQueue::cases() as $queue) {
+        $response->assertSee(route('tickets.index', ['queue' => $queue->value]));
     }
-    $response->assertSee(route('tickets.index', ['status' => 'waiting_customer']))
-        ->assertSee(route('tickets.index', ['priority' => 'urgent']))
-        ->assertSee(route('tickets.index', ['queue' => 'active', 'assignee' => $alex->id]));
+    foreach (['status' => TicketStatus::cases(), 'priority' => TicketPriority::cases()] as $filter => $cases) {
+        foreach ($cases as $case) {
+            $link = route('tickets.index', [$filter => $case->value]);
+            $response->assertSee($link);
+            $expectedCount = $response->viewData($filter === 'status' ? 'statuses' : 'priorities')[$case->value];
+            $this->get($link)->assertOk()->assertViewHas('tickets', fn ($tickets): bool => $tickets->total() === $expectedCount);
+        }
+    }
+    $response->assertSee(route('tickets.index', ['queue' => 'active', 'assignee' => $alex->id]));
+    foreach ($response->viewData('agents') as $agent) {
+        $this->get(route('tickets.index', ['queue' => 'active', 'assignee' => $agent->id]))->assertOk()
+            ->assertViewHas('tickets', fn ($tickets): bool => $tickets->total() === $agent->active_tickets_count);
+    }
 });
 
 test('operational queue links return the exact demo members', function (string $queue, array $ids) {
-    $this->travelTo('2026-01-20 12:00:00');
     $this->seed(DatabaseSeeder::class);
     $viewer = User::where('email', 'admin@deskops.example')->firstOrFail();
 
@@ -182,11 +212,10 @@ test('operational queue links return the exact demo members', function (string $
 })->with([
     'active' => ['active', [9, 8, 7, 6, 5, 4, 3, 2, 1]], 'unassigned' => ['unassigned', [3, 2, 1]],
     'high priorities' => ['high_priority', [7, 5, 3]], 'urgent' => ['urgent', [3]],
-    'attention' => ['attention', [7, 5, 3, 2, 1]], 'recent resolutions' => ['resolved_recently', [12, 11, 10]],
+    'attention' => ['attention', [7, 5, 3, 2, 1]], 'completed' => ['completed', [12, 11, 10]],
 ]);
 
 test('operational filters combine with search status priority and assignment and persist through pagination', function () {
-    $this->freezeTime();
     $agent = User::factory()->create();
     $matching = Ticket::factory()->count(23)->inStatus(TicketStatus::InProgress)->assignedTo($agent)->create(['title' => 'Export fictif', 'priority' => 'high', 'created_by' => $agent->id]);
     Ticket::factory()->inStatus(TicketStatus::Resolved)->assignedTo($agent)->create(['title' => 'Export fictif', 'priority' => 'high']);
@@ -213,7 +242,6 @@ test('unknown or malformed operational queues are rejected', function (mixed $qu
 })->with(['unknown' => 'all', 'array' => [['active']], 'injection' => "active' OR 1=1 --"]);
 
 test('recent queues use dates before IDs with stable tie ordering and limit each preview to five', function () {
-    $this->travelTo('2026-01-20 12:00:00');
     $agent = User::factory()->create();
     $older = Ticket::factory()->count(6)->create(['created_by' => $agent->id, 'created_at' => '2026-01-18 12:00:00']);
     $newer = Ticket::factory()->create(['created_by' => $agent->id, 'created_at' => '2026-01-19 12:00:00']);
@@ -240,7 +268,6 @@ test('tickets and actor names are escaped and activity metadata is not exposed',
 });
 
 test('dashboard query count stays bounded when ticket activity and agent counts grow', function (bool $mine) {
-    $this->freezeTime();
     $agent = User::factory()->create();
     $tickets = Ticket::factory()->count(5)->assignedTo($agent)->create(['priority' => 'high', 'created_by' => $agent->id]);
     foreach ($tickets as $ticket) {

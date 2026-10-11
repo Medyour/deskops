@@ -9,7 +9,7 @@ enum TicketQueue: string
     case HighPriority = 'high_priority';
     case Urgent = 'urgent';
     case Attention = 'attention';
-    case ResolvedRecently = 'resolved_recently';
+    case Completed = 'completed';
 
     public function label(): string
     {
@@ -19,7 +19,7 @@ enum TicketQueue: string
             self::HighPriority => 'Actifs de priorité Haute ou Urgente',
             self::Urgent => 'Urgents actifs',
             self::Attention => 'À traiter : non assignés ou prioritaires actifs',
-            self::ResolvedRecently => 'Résolus sur les 7 derniers jours',
+            self::Completed => 'Terminés : Résolu ou Fermé',
         };
     }
 
@@ -27,6 +27,12 @@ enum TicketQueue: string
     public static function activeStatuses(): array
     {
         return [TicketStatus::New->value, TicketStatus::InProgress->value, TicketStatus::WaitingCustomer->value];
+    }
+
+    /** @return list<string> */
+    public static function completedStatuses(): array
+    {
+        return [TicketStatus::Resolved->value, TicketStatus::Closed->value];
     }
 
     /** @return list<string> */

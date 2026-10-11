@@ -104,15 +104,15 @@ Filtres GET combinables avec un ET : `status`, `priority`, `assignee` (id d’ag
 
 Précision de vocabulaire : l’ancien ensemble « à traiter » désigne les **tickets actifs**. Le titre de file **À traiter** désigne désormais le sous-ensemble priorisé ci-dessous ; il ne change aucune règle de mutation ou de statut.
 
-| Indicateur / file         | Définition exacte                                                                                                                        | Filtre `queue`      |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------- |
-| Total                     | Tous les tickets du périmètre, y compris Résolu et Fermé                                                                                 | Aucun               |
-| Tickets actifs            | Statut Nouveau, En cours ou En attente du client                                                                                         | `active`            |
-| Non assignés              | Tickets actifs dont `assigned_to IS NULL`                                                                                                | `unassigned`        |
-| Priorités élevées actives | Tickets actifs de priorité Haute ou Urgente                                                                                              | `high_priority`     |
-| Urgents actifs            | Tickets actifs de priorité Urgente                                                                                                       | `urgent`            |
-| Résolus sur 7 jours       | Statut actuel Résolu ou Fermé ; `resolved_at` entre maintenant UTC moins 7 jours et maintenant UTC, bornes incluses ; aucune date future | `resolved_recently` |
-| À traiter                 | Tickets actifs ET (non assignés OU priorité Haute/Urgente), chaque ticket compté une seule fois                                          | `attention`         |
+| Indicateur / file         | Définition exacte                                                                                | Filtre `queue`  |
+| ------------------------- | ------------------------------------------------------------------------------------------------ | --------------- |
+| Total                     | Tous les tickets du périmètre, y compris Résolu et Fermé                                         | Aucun           |
+| Tickets actifs            | Statut Nouveau, En cours ou En attente du client                                                 | `active`        |
+| Non assignés              | Tickets actifs dont `assigned_to IS NULL`                                                        | `unassigned`    |
+| Priorités élevées actives | Tickets actifs de priorité Haute ou Urgente                                                      | `high_priority` |
+| Urgents actifs            | Tickets actifs de priorité Urgente                                                               | `urgent`        |
+| Terminés                  | Tous les tickets actuellement au statut Résolu ou Fermé, quelle que soit leur date de résolution | `completed`     |
+| À traiter                 | Tickets actifs ET (non assignés OU priorité Haute/Urgente), chaque ticket compté une seule fois  | `attention`     |
 
 Les répartitions par statut et par priorité couvrent tous les tickets du périmètre, avec les catégories vides affichées à zéro. La charge par agent compte uniquement ses tickets actifs ; les agents sans charge restent visibles, les administrateurs sont exclus et la file non assignée est séparée. Tri : charge décroissante, nom puis identifiant croissants.
 
@@ -122,7 +122,7 @@ Les liens vers les compteurs/files/répartitions reprennent `assignee=me` dans l
 
 La page est calculée à chaque chargement, sans cache métier ni rafraîchissement automatique. Sur base vide, compteurs et catégories valent zéro, les agents existants ont une charge nulle et chaque file affiche un état vide. Aucun SLA, délai implicite, échéance ou durée moyenne n’est calculé.
 
-Les heures sont stockées en UTC et affichées en Europe/Paris. Les tests figent l’horloge. Le jeu de démonstration conserve ses dates fixes : les métriques temporelles évoluent naturellement avec la date réelle, ce qui est explicité dans la démo. Les répartitions utilisent des listes textuelles accessibles en Blade, sans dépendre des couleurs ou de JavaScript ; aucun graphique Vue n’est nécessaire.
+Les heures sont stockées en UTC et affichées en Europe/Paris. Les indicateurs dépendent des statuts, priorités et assignations actuels, sans fenêtre temporelle ni horloge figée dans leurs tests. Le jeu de démonstration conserve ses dates historiques fixes. Les dates de résolution/fermeture et leurs règles métier sont conservées. Les répartitions utilisent des listes textuelles accessibles en Blade, sans dépendre des couleurs ou de JavaScript ; aucun graphique Vue n’est nécessaire.
 
 ## Données de démonstration
 
@@ -151,7 +151,7 @@ Reconstruction sur une base de démonstration neuve uniquement : identifiants 1�
 
 Pour les tickets non nouveaux : assignation à +1 minute, passage à En cours à +2 minutes, puis En attente/Résolu à +3 minutes, Fermé à +7 minutes si applicable. Les transitions initiales sont effectuées par Camille avec le motif fixe `Scénario de démonstration` lorsque nécessaire. Commentaires à +5 minutes (Camille : `Demande enregistrée dans le support.`) et +6 minutes (agent assigné, sinon Camille : `Suivi de démonstration ajouté.`), avant l’éventuelle fermeture pour respecter la lecture seule.
 
-Résultat attendu : 12 tickets, 24 commentaires, 60 activités (12 créations + 9 assignations + 15 transitions + 24 commentaires). Avec horloge figée au 20 janvier 2026 à 12:00 UTC : total 12, actifs 9, non assignés 3, priorités élevées actives 3, urgents actifs 1, résolus sur 7 jours 3 ; charges Alex 3 / Sam 3 / file non assignée 3. La file À traiter contient 5 tickets, aperçu `DS-0003, DS-0005, DS-0007, DS-0001, DS-0002`. Répartition statuts : Nouveau 3, En cours 4, En attente 2, Résolu 2, Fermé 1 ; priorités : Basse 3, Normale 5, Haute 3, Urgente 1. Les créations récentes sont `DS-0012` à `DS-0008` ; les activités récentes ont les identifiants `60, 59, 58, 57, 56`. Au 11 octobre 2026, Résolus sur 7 jours vaut zéro ; les autres comptes sont inchangés. Le futur reset sera explicite et réservé à une base locale jetable, jamais exécuté automatiquement à l’installation.
+Résultat attendu : 12 tickets, 24 commentaires, 60 activités (12 créations + 9 assignations + 15 transitions + 24 commentaires). Indicateurs indépendants de la date de consultation : total 12, actifs 9, non assignés actifs 3, priorités élevées actives 3, urgents actifs 1, terminés 3 ; charges actives Alex 3 / Sam 3 / file non assignée 3. La file À traiter contient 5 tickets, aperçu `DS-0003, DS-0005, DS-0007, DS-0001, DS-0002`. Répartition statuts : Nouveau 3, En cours 4, En attente 2, Résolu 2, Fermé 1 ; priorités : Basse 3, Normale 5, Haute 3, Urgente 1. Les créations récentes sont `DS-0012` à `DS-0008` ; les activités récentes ont les identifiants `60, 59, 58, 57, 56`. Le futur reset sera explicite et réservé à une base locale jetable, jamais exécuté automatiquement à l’installation.
 
 L’initialisation exige une table `tickets` vide dont les identifiants n’ont jamais été utilisés. Les relances reconnaissent la fixture par ses activités de création immuables et conservent les tickets modifiés, les commentaires, l’historique et les tickets supplémentaires. Une fixture partielle ou des tickets sans cette origine sont refusés sans écrasement, sans création partielle de comptes et sans renouvellement des accès. Aucun reset n’est fourni dans cette étape. `setup` applique seulement les migrations ; il ne lance pas le seed.
 
@@ -163,5 +163,5 @@ L’initialisation exige une table `tickets` vide dont les identifiants n’ont 
 4. Chaque mutation effective produit les activités attendues, avec auteur et valeurs avant/après.
 5. Deux prises en charge concurrentes ne peuvent pas écraser l’agent gagnant.
 6. Recherche, filtres, pagination, états vides et métriques correspondent au contrat.
-7. Recréer la fixture donne les mêmes données et métriques à horloge figée.
+7. Recréer la fixture donne les mêmes données et métriques, indépendamment de la date de consultation.
 8. Les parcours restent utilisables au clavier, sur mobile et sans JavaScript ; le contrôle qualité local est vert.

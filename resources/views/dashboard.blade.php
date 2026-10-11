@@ -29,7 +29,7 @@
                 ['unassigned', 'Non assignés', 'Tickets actifs sans agent assigné.', ['queue' => 'unassigned']],
                 ['high_priority', 'Priorités élevées actives', 'Priorité Haute ou Urgente, hors tickets terminés.', ['queue' => 'high_priority']],
                 ['urgent', 'Urgents actifs', 'Priorité Urgente parmi les tickets actifs.', ['queue' => 'urgent']],
-                ['resolved_recently', 'Résolus sur 7 jours', 'Actuellement Résolu ou Fermé, résolution sur les 7 derniers jours.', ['queue' => 'resolved_recently']],
+                ['completed', 'Terminés', 'Tickets actuellement au statut Résolu ou Fermé.', ['queue' => 'completed']],
             ] as [$key, $label, $definition, $linkFilters])
                 <div class="card min-w-0">
                     <dt class="text-sm font-semibold text-slate-600">{{ $label }}</dt>
@@ -130,7 +130,7 @@
         </section>
     </div>
     <aside aria-label="Lecture des indicateurs" class="mt-6 rounded-xl border border-stone-200 px-5 py-4 text-xs leading-relaxed text-slate-600">
-        <p>Les indicateurs reflètent les données enregistrées au chargement. « Résolus sur 7 jours » utilise la date de résolution, entre maintenant moins 7 jours et maintenant, bornes incluses. Les dates fixes de démonstration ne sont pas recalées sur aujourd’hui.</p>
+        <p>Les indicateurs reflètent les données enregistrées au chargement. « Terminés » compte tous les tickets actuellement au statut Résolu ou Fermé, quelle que soit leur date de résolution.</p>
         @if($mine)<p class="mt-2">La vue Mes tickets suit votre assignation actuelle, y compris pour les activités. Les tickets non assignés sont donc absents de cette vue.</p>@endif
     </aside>
 </x-layout>
