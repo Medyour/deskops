@@ -15,7 +15,7 @@ class TicketPolicy
 
     public function view(User $user, Ticket $ticket): bool
     {
-        return true;
+        return ! $user->demoRestricted() || $ticket->is_demo;
     }
 
     public function create(User $user): bool
@@ -25,7 +25,7 @@ class TicketPolicy
 
     public function update(User $user, Ticket $ticket): bool
     {
-        return $ticket->status !== TicketStatus::Closed && ($user->isAdministrator() || $ticket->assigned_to === $user->id);
+        return $this->view($user, $ticket) && $ticket->status !== TicketStatus::Closed && ($user->isAdministrator() || $ticket->assigned_to === $user->id);
     }
 
     public function comment(User $user, Ticket $ticket): bool
@@ -35,7 +35,7 @@ class TicketPolicy
 
     public function assign(User $user, Ticket $ticket, ?int $assigneeId): bool
     {
-        if ($ticket->status === TicketStatus::Closed) {
+        if (! $this->view($user, $ticket) || ($user->demoRestricted() && $assigneeId !== null && ! User::query()->whereKey($assigneeId)->whereNotNull('demo_identity')->exists()) || $ticket->status === TicketStatus::Closed) {
             return false;
         }
 
@@ -44,7 +44,7 @@ class TicketPolicy
 
     public function changeStatus(User $user, Ticket $ticket, TicketStatus $target): bool
     {
-        return $user->isAdministrator() || ($ticket->assigned_to === $user->id && $ticket->status !== TicketStatus::Closed && $target !== TicketStatus::Closed);
+        return $this->view($user, $ticket) && ($user->isAdministrator() || ($ticket->assigned_to === $user->id && $ticket->status !== TicketStatus::Closed && $target !== TicketStatus::Closed));
     }
 
     public function delete(User $user, Ticket $ticket): bool

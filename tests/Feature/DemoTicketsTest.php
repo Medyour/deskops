@@ -79,7 +79,7 @@ test('demo initialization refuses unrelated tickets without changing existing re
     $this->assertDatabaseCount('users', 1);
 });
 
-test('the local demo command seeds once while renewing credentials on every run', function () {
+test('the local demo command seeds once and preserves existing credentials', function () {
     $this->app->detectEnvironment(fn (): string => 'local');
 
     expect(Artisan::call('deskops:demo'))->toBe(0);
@@ -88,7 +88,7 @@ test('the local demo command seeds once while renewing credentials on every run'
 
     expect(Artisan::call('deskops:demo'))->toBe(0);
 
-    expect(User::where('email', 'admin@deskops.example')->firstOrFail()->password)->not->toBe($oldHash);
+    expect(User::where('email', 'admin@deskops.example')->firstOrFail()->password)->toBe($oldHash);
     expect(DB::table('ticket_activities')->orderBy('id')->get()->toJson())->toBe($before);
     $this->assertDatabaseCount('tickets', 12);
     $this->assertDatabaseCount('comments', 24);

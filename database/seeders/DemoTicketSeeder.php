@@ -2,10 +2,13 @@
 
 namespace Database\Seeders;
 
+use App\Actions\Demo\DemoMaintenance;
+use App\Actions\Demo\ResetDemo;
 use App\Actions\Tickets\AddComment;
 use App\Actions\Tickets\AssignTicket;
 use App\Actions\Tickets\ChangeTicketStatus;
 use App\Actions\Tickets\CreateTicket;
+use App\Enums\DemoIdentity;
 use App\Enums\TicketActivityType;
 use App\Enums\TicketPriority;
 use App\Enums\TicketStatus;
@@ -61,31 +64,47 @@ class DemoTicketSeeder extends Seeder
             if ($sequenceUsed) {
                 throw new LogicException('Fixture refusée : les identifiants de cette base ont déjà été utilisés.');
             }
-            foreach (self::TICKETS as $index => [$title, $status, $priority, $agentName]) {
-                $createdAt = $this->createdAt($index);
-                $number = $index + 1;
-                $ticket = Date::withTestNow($createdAt, fn (): Ticket => app(CreateTicket::class)->execute($creator, [
-                    'title' => $title, 'description' => 'Demande de démonstration : '.$title.'. Merci de vérifier et de proposer une solution.',
-                    'requester_name' => 'Client '.$number, 'requester_email' => 'client'.$number.'@deskops.example', 'priority' => $priority->value,
-                ]));
-                if ($ticket->id !== $number) {
-                    throw new LogicException('Fixture refusée : les identifiants de cette base ont déjà été utilisés.');
-                }
-                $agent = $agentName === null ? null : User::where('email', $agentName.'@deskops.example')->firstOrFail();
-                if ($agent !== null) {
-                    $ticket = Date::withTestNow($createdAt->addMinute(), fn (): Ticket => app(AssignTicket::class)->execute($creator, $ticket, ['version' => $ticket->version, 'assigned_to' => $agent->id]));
-                    $ticket = $this->transition($creator, $ticket, TicketStatus::InProgress, $createdAt->addMinutes(2));
-                    if ($status !== TicketStatus::InProgress) {
-                        $ticket = $this->transition($creator, $ticket, $status === TicketStatus::Closed ? TicketStatus::Resolved : $status, $createdAt->addMinutes(3));
-                    }
-                }
-                $ticket = Date::withTestNow($createdAt->addMinutes(5), fn (): Ticket => app(AddComment::class)->execute($creator, $ticket, ['version' => $ticket->version, 'body' => 'Demande enregistrée dans le support.']));
-                $ticket = Date::withTestNow($createdAt->addMinutes(6), fn (): Ticket => app(AddComment::class)->execute($agent ?? $creator, $ticket, ['version' => $ticket->version, 'body' => 'Suivi de démonstration ajouté.']));
-                if ($status === TicketStatus::Closed) {
-                    $this->transition($creator, $ticket, TicketStatus::Closed, $createdAt->addMinutes(7));
-                }
+            $this->buildFixture($creator, true);
+            if ($creator->isDemo()) {
+                app(ResetDemo::class)->captureFixture();
             }
         });
+    }
+
+    public function initializePublicFixture(): void
+    {
+        if (! config('app.demo_mode') || ! app(DemoMaintenance::class)->active()) {
+            throw new LogicException('La fixture publique exige une opération démo protégée.');
+        }
+        $this->buildFixture(User::where('demo_identity', DemoIdentity::Administrator)->firstOrFail(), false);
+    }
+
+    private function buildFixture(User $creator, bool $strictIdentifiers): void
+    {
+        foreach (self::TICKETS as $index => [$title, $status, $priority, $agentName]) {
+            $createdAt = $this->createdAt($index);
+            $number = $index + 1;
+            $ticket = Date::withTestNow($createdAt, fn (): Ticket => app(CreateTicket::class)->execute($creator, [
+                'title' => $title, 'description' => 'Demande de démonstration : '.$title.'. Merci de vérifier et de proposer une solution.',
+                'requester_name' => 'Client '.$number, 'requester_email' => 'client'.$number.'@deskops.example', 'priority' => $priority->value,
+            ]));
+            if ($strictIdentifiers && $ticket->id !== $number) {
+                throw new LogicException('Fixture refusée : les identifiants de cette base ont déjà été utilisés.');
+            }
+            $agent = $agentName === null ? null : User::where('email', $agentName.'@deskops.example')->firstOrFail();
+            if ($agent !== null) {
+                $ticket = Date::withTestNow($createdAt->addMinute(), fn (): Ticket => app(AssignTicket::class)->execute($creator, $ticket, ['version' => $ticket->version, 'assigned_to' => $agent->id]));
+                $ticket = $this->transition($creator, $ticket, TicketStatus::InProgress, $createdAt->addMinutes(2));
+                if ($status !== TicketStatus::InProgress) {
+                    $ticket = $this->transition($creator, $ticket, $status === TicketStatus::Closed ? TicketStatus::Resolved : $status, $createdAt->addMinutes(3));
+                }
+            }
+            $ticket = Date::withTestNow($createdAt->addMinutes(5), fn (): Ticket => app(AddComment::class)->execute($creator, $ticket, ['version' => $ticket->version, 'body' => 'Demande enregistrée dans le support.']));
+            $ticket = Date::withTestNow($createdAt->addMinutes(6), fn (): Ticket => app(AddComment::class)->execute($agent ?? $creator, $ticket, ['version' => $ticket->version, 'body' => 'Suivi de démonstration ajouté.']));
+            if ($status === TicketStatus::Closed) {
+                $this->transition($creator, $ticket, TicketStatus::Closed, $createdAt->addMinutes(7));
+            }
+        }
     }
 
     private function createdAt(int $index): CarbonImmutable

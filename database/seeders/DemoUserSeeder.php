@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\DemoIdentity;
 use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -35,6 +36,7 @@ class DemoUserSeeder extends Seeder
 
             if (! $user->exists) {
                 $user->password = Str::password(24);
+                $user->demo_identity = DemoIdentity::from($account['role'] === UserRole::Admin ? 'administrator' : explode('@', $account['email'])[0]);
             }
 
             $user->save();

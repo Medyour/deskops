@@ -2,6 +2,7 @@
 
 namespace App\Actions\Tickets;
 
+use App\Actions\Demo\DemoSession;
 use App\Enums\TicketActivityType;
 use App\Enums\TicketPriority;
 use App\Enums\TicketStatus;
@@ -18,11 +19,12 @@ class CreateTicket
         $attributes = TicketInput::validate($input, TicketInput::creationRules());
 
         return DB::transaction(function () use ($actor, $attributes): Ticket {
+            app(DemoSession::class)->validate(lock: true);
             $actor->refresh();
             Gate::forUser($actor)->authorize('create', Ticket::class);
             $ticket = new Ticket;
             $ticket->forceFill([
-                ...$attributes, 'created_by' => $actor->id, 'assigned_to' => null,
+                ...$attributes, 'created_by' => $actor->id, 'assigned_to' => null, 'is_demo' => $actor->isDemo(),
                 'status' => TicketStatus::New, 'priority' => $attributes['priority'] ?? TicketPriority::Normal, 'version' => 1,
             ])->save();
             $changes = [];

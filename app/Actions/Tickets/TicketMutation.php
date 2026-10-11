@@ -2,6 +2,7 @@
 
 namespace App\Actions\Tickets;
 
+use App\Actions\Demo\DemoSession;
 use App\Enums\TicketActivityType;
 use App\Exceptions\StaleTicket;
 use App\Models\Ticket;
@@ -17,6 +18,7 @@ class TicketMutation
     {
         try {
             return DB::transaction(function () use ($ticket, $expectedVersion, $operation): Ticket {
+                app(DemoSession::class)->validate(lock: true);
                 /** The conditional write reserves the SQLite writer or PostgreSQL row before rechecking permissions. */
                 $matched = DB::table('tickets')->where('id', $ticket->id)->where('version', $expectedVersion)
                     ->update(['version' => DB::raw('version')]);

@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Models\Ticket;
 use App\Models\TicketActivity;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 class TicketWorkspace
@@ -14,9 +15,9 @@ class TicketWorkspace
     public function __construct(private ChangeTicketStatus $statuses, private AssignTicket $assignment) {}
 
     /** @return Collection<int, User> */
-    public function agents(): Collection
+    public function agents(?User $viewer = null): Collection
     {
-        return User::query()->where('role', UserRole::Agent)->orderBy('name')->orderBy('id')->get(['id', 'name', 'role']);
+        return User::query()->where('role', UserRole::Agent)->when($viewer?->demoRestricted(), fn (Builder $query): Builder => $query->whereNotNull('demo_identity'))->orderBy('name')->orderBy('id')->get(['id', 'name', 'role']);
     }
 
     /** @return array{ticket: Ticket, agents: Collection<int, User>, historyUsers: Collection<int, User>, transitions: list<TicketStatus>, allowsRelease: bool} */
@@ -29,7 +30,7 @@ class TicketWorkspace
         $historyUsers = $historyIds->isEmpty() ? new Collection : User::query()->whereIn('id', $historyIds)->get(['id', 'name'])->keyBy('id');
 
         return [
-            'ticket' => $ticket, 'agents' => $this->agents(), 'historyUsers' => $historyUsers,
+            'ticket' => $ticket, 'agents' => $this->agents($viewer), 'historyUsers' => $historyUsers,
             'transitions' => $this->statuses->availableTransitions($viewer, $ticket),
             'allowsRelease' => $this->assignment->allowsRelease($ticket),
         ];

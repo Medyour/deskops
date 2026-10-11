@@ -5,7 +5,6 @@ use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 
 test('demo accounts are deterministic and repeated seeding preserves passwords', function () {
     $this->seed(DatabaseSeeder::class);
@@ -39,7 +38,7 @@ test('the demo command is unavailable outside local', function (string $environm
     $this->assertDatabaseCount('users', 0);
 })->with(['testing', 'staging', 'production']);
 
-test('the demo command issues working credentials and revokes previous sessions and tokens', function () {
+test('the demo command preserves credentials revokes sessions and tokens and never displays access details', function () {
     $this->app->detectEnvironment(fn (): string => 'local');
     $this->seed(DatabaseSeeder::class);
     $user = User::where('email', 'admin@deskops.example')->firstOrFail();
@@ -57,14 +56,14 @@ test('the demo command issues working credentials and revokes previous sessions 
 
     expect(Artisan::call('deskops:demo'))->toBe(0);
     $output = Artisan::output();
-    expect(preg_match('/admin@deskops\\.example\\s+\\|\\s+Administrateur\\s+\\|\\s+([A-Za-z0-9]+)\\s+\\|/', $output, $matches))->toBe(1);
-    expect(Hash::check($matches[1], $user->fresh()->password))->toBeTrue();
-    expect($user->fresh()->password)->not->toBe($oldHash);
+    expect($output)->not->toContain($user->email)->not->toContain($oldHash);
+    expect($user->fresh()->password)->toBe($oldHash);
     $this->assertDatabaseCount('users', 3);
     $this->assertDatabaseMissing('sessions', ['id' => 'old-session']);
     $this->assertDatabaseMissing('password_reset_tokens', ['email' => $user->email]);
 
     expect(Artisan::call('deskops:demo'))->toBe(0);
-    expect(Hash::check($matches[1], $user->fresh()->password))->toBeFalse();
+    expect($user->fresh()->password)->toBe($oldHash);
+    expect(Artisan::output())->not->toContain($user->email)->not->toContain($oldHash);
     $this->assertDatabaseCount('users', 3);
 });

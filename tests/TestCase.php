@@ -29,6 +29,28 @@ abstract class TestCase extends BaseTestCase
         parent::tearDown();
     }
 
+    /** @return array<string, string> */
+    protected function isolatedArtisanEnvironment(string $configurationCache, string $routesCache): array
+    {
+        $connection = DB::connection()->getConfig();
+        $environment = [
+            'APP_ENV' => 'testing', 'APP_DEMO_MODE' => 'true',
+            'APP_CONFIG_CACHE' => $configurationCache, 'APP_ROUTES_CACHE' => $routesCache,
+            'DB_CONNECTION' => DB::getDriverName(), 'DATABASE_URL' => '', 'DB_URL' => '',
+        ];
+        if (DB::getDriverName() === 'sqlite') {
+            return [...$environment, 'DB_DATABASE' => $connection['database']];
+        }
+        $authentication = rawurlencode($connection['username']);
+        if ($connection['password'] !== '') {
+            $authentication .= ':'.rawurlencode($connection['password']);
+        }
+        $url = 'postgresql://'.$authentication.'@'.$connection['host'].':'.$connection['port'].'/'.rawurlencode($connection['database']);
+        $url .= '?'.http_build_query(['sslmode' => $connection['sslmode'], 'search_path' => $connection['search_path']]);
+
+        return [...$environment, 'DATABASE_URL' => $url];
+    }
+
     /** @param list<string> $names */
     protected function isolateDatabase(array $names): Closure
     {

@@ -21,7 +21,7 @@ class TicketInput
             'requester_email' => ['required', 'string', 'email:rfc', 'max:254'],
             'priority' => ['sometimes', 'required', Rule::enum(TicketPriority::class)],
         ];
-        foreach (['id', 'reference', 'status', 'created_by', 'assigned_to', 'resolved_at', 'closed_at', 'version', 'role', 'created_at', 'updated_at'] as $field) {
+        foreach (['id', 'reference', 'status', 'created_by', 'assigned_to', 'resolved_at', 'closed_at', 'version', 'role', 'is_demo', 'created_at', 'updated_at'] as $field) {
             $rules[$field] = ['missing'];
         }
 

@@ -21,6 +21,9 @@ class ResetUserPassword implements ResetsUserPasswords
      */
     public function reset(User $user, array $input): void
     {
+        if ($user->isDemo()) {
+            throw ValidationException::withMessages(['email' => 'Ce compte de démonstration ne permet pas la récupération de mot de passe.']);
+        }
         Validator::make($input, [
             'password' => $this->passwordRules(),
         ])->validate();

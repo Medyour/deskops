@@ -19,6 +19,7 @@ class TicketFactory extends Factory
             'requester_name' => fake()->name(), 'requester_email' => fake()->safeEmail(),
             'priority' => TicketPriority::Normal, 'status' => TicketStatus::New,
             'created_by' => User::factory(), 'assigned_to' => null, 'version' => 1,
+            'is_demo' => fn (array $attributes): bool => User::findOrFail($attributes['created_by'])->isDemo(),
             'resolved_at' => null, 'closed_at' => null,
         ];
     }
