@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Tickets\AssignTicket;
+use App\Actions\Tickets\ChangeTicketStatus;
 use App\Enums\TicketStatus;
 use App\Models\Ticket;
 use App\Models\User;
@@ -117,6 +118,19 @@ test('the status endpoint requires a resolution summary', function () {
 
     $this->assertDatabaseHas('tickets', ['id' => $ticket->id, 'status' => 'in_progress', 'version' => 1, 'resolved_at' => null]);
     $this->assertDatabaseCount('ticket_activities', 0);
+});
+
+test('a stale status request returns 409 before evaluating newly required transition reasons', function () {
+    $agent = User::factory()->create();
+    $ticket = Ticket::factory()->inStatus(TicketStatus::InProgress)->assignedTo($agent)->create();
+    app(ChangeTicketStatus::class)->execute($agent, $ticket, ['version' => 1, 'status' => 'resolved', 'reason' => 'Solution concurrente fictive']);
+    $before = $ticket->fresh()->getAttributes();
+
+    $this->actingAs($agent)->patchJson(route('tickets.change-status', $ticket), ['version' => 1, 'status' => 'in_progress'])
+        ->assertConflict();
+
+    expect($ticket->fresh()->getAttributes())->toBe($before);
+    $this->assertDatabaseCount('ticket_activities', 1);
 });
 
 test('an agent cannot assign a new ticket to a colleague through the endpoint', function () {

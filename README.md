@@ -124,7 +124,7 @@ composer audit
 npm audit
 ```
 
-Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; le test de concurrence utilise deux connexions à un fichier SQLite temporaire supprimé après le test. Ils couvrent l’authentification et les rôles, les transitions autorisées/interdites, les entrées invalides, l’assignation, les versions obsolètes, les verrous SQLite, le rollback de l’historique, les contraintes SQL et l’idempotence de la fixture. Les tests Unit couvrent le graphe complet des statuts. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
+Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; les tests de concurrence et de migrations utilisent des fichiers SQLite temporaires supprimés après les tests. Ils couvrent l’authentification et les rôles, les transitions autorisées/interdites, les entrées invalides, l’assignation, les versions obsolètes, les verrous SQLite, le rollback de l’historique, les contraintes SQL, la réversibilité des migrations et l’idempotence de la fixture. Les tests Unit couvrent le graphe complet des statuts. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
 
 ## Fichiers à connaître
 
@@ -154,7 +154,7 @@ Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; l
 
 1. **Fondations — livré** : environnement, authentification, rôles, vitrine, documentation, outillage et premier commit local.
 2. **Dépôt privé et CI — livré** : publication sur `Medyour/deskops`, installation reproductible, audits bloquants et contrôles GitHub Actions.
-3. **Cœur métier des tickets — implémenté sur la branche de travail** : migrations, enums, policy, validations, assignation, transitions, historique immuable, commentaires internes et fixture de 12 tickets ; tests des refus et de la concurrence.
+3. **Cœur métier des tickets — livré** : migrations, enums, policy, validations, assignation, transitions, historique immuable, commentaires internes et fixture de 12 tickets ; tests des refus et de la concurrence.
 4. **Parcours des tickets** : liste, détail, formulaires, édition des champs et priorités, présentation des commentaires et de la chronologie ; messages de validation et de conflit.
 5. **Recherche et pilotage** : filtres persistants, pagination, indicateurs à horloge testable et éventuel îlot Vue justifié.
 6. **Finition de la vitrine** : parcours de démonstration, vérifications clavier/mobile et documentation finale.

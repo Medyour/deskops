@@ -38,12 +38,12 @@ class TicketInput
     }
 
     /** @return array<string, array<mixed>> */
-    public static function statusRules(TicketStatus $current, ?TicketStatus $target): array
+    public static function statusRules(?TicketStatus $current = null, ?TicketStatus $target = null): array
     {
         return [
             'version' => ['required', 'integer', 'min:1'],
             'status' => ['required', Rule::enum(TicketStatus::class)],
-            'reason' => $target !== null && $target !== $current && $current->requiresReasonFor($target)
+            'reason' => $current !== null && $target !== null && $target !== $current && $current->requiresReasonFor($target)
                 ? ['required', 'string', 'min:5', 'max:500'] : ['nullable', 'string', 'max:500'],
             'assigned_to' => ['missing'], 'resolved_at' => ['missing'], 'closed_at' => ['missing'],
         ];
