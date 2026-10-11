@@ -45,7 +45,7 @@ Un administrateur n’est pas un agent assignable. La création produit toujours
 
 Référence affichée : `DS-0001`, calculée à partir de l’identifiant entier (au moins quatre chiffres ; reste unique après 9999). Le contact est dénormalisé sur le ticket : pas de modèle Client à ce stade. Les textes sont stockés comme texte brut et échappés à l’affichage ; ni HTML, ni Markdown interprété.
 
-SQLite reste le moteur de développement local rapide ; PostgreSQL 18 est le moteur cible de production. Les règles métier et leurs protections SQL sont identiques sur les deux moteurs. La référence ne promet pas une numérotation sans trous : PostgreSQL ne réutilise pas les valeurs de séquence consommées par une transaction annulée.
+SQLite reste le moteur de développement local rapide ; PostgreSQL 18 est le moteur serveur compatible. La future démonstration DigitalOcean utilisera une base de développement pour les seules données fictives, sans sauvegarde intégrée, distincte d’une éventuelle base gérée de production. Les paramètres de connexion seront fournis au runtime et conservés. Les règles métier et leurs protections SQL sont identiques sur les deux moteurs. La référence ne promet pas une numérotation sans trous : PostgreSQL ne réutilise pas les valeurs de séquence consommées par une transaction annulée.
 
 Clés étrangères vers les utilisateurs et tickets avec suppression restreinte. Les comptes ne sont pas supprimés dans le MVP. Index : statut/date, priorité/date, agent/statut, activités et commentaires par ticket/date/id. Pas de moteur de recherche externe.
 

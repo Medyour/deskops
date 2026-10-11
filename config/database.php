@@ -98,7 +98,7 @@ return [
             'search_path' => 'public',
             'timezone' => 'UTC',
             'isolation_level' => 'READ COMMITTED',
-            'sslmode' => env('DB_SSLMODE', 'verify-full'),
+            'sslmode' => env('DB_SSLMODE'),
             'sslrootcert' => env('DB_SSLROOTCERT'),
         ],
 

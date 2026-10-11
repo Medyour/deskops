@@ -17,7 +17,7 @@ Le contrat complet se trouve dans [docs/MVP.md](docs/MVP.md), les choix de struc
 ## Stack
 
 - PHP **8.3+** (CI sous 8.3), Laravel **13**, Fortify ; Composer **2.10.3** (`.composer-version`).
-- SQLite pour le développement local rapide ; PostgreSQL **18** comme moteur cible de production. Sessions et cache utilisent le moteur choisi.
+- SQLite pour le développement local rapide ; PostgreSQL **18** pour les environnements serveur. La future démonstration DigitalOcean utilisera une base de développement, distincte d’une base gérée de production. Sessions et cache utilisent le moteur choisi.
 - Blade, Tailwind CSS **4**, Vite **8**, fontes système.
 - Node **24.19.0** (`.node-version`, minimum compatible **22.12**) et npm **11.17.0** (`packageManager` dans `package.json`) ; dépendances exactes dans les lockfiles.
 - Pest **4** / PHPUnit, Laravel Pint et Prettier.
@@ -107,18 +107,28 @@ La configuration par défaut utilise `database/database.sqlite`. Aucun identifia
 
 ### Configuration PostgreSQL 18 au runtime
 
-Le moteur cible de production est PostgreSQL 18 ; aucun service de production n’est créé par ce dépôt. Fournir `DB_CONNECTION=pgsql` et `DATABASE_URL` dans l’environnement du processus. L’URL est interprétée par Laravel (schémas `postgres` ou `postgresql`) ; `DB_URL` reste un alias de secours si `DATABASE_URL` est absent. Ne pas placer une URL réelle dans Git, une commande publiée ou les logs.
+PostgreSQL 18 est le moteur serveur compatible ; aucune infrastructure n’est créée par ce dépôt. Fournir `DB_CONNECTION=pgsql` et `DATABASE_URL` dans l’environnement du processus. L’URL est la source de vérité, interprétée par Laravel (schémas `postgres` ou `postgresql`) sans la modifier ; `DB_URL` reste un alias de secours si `DATABASE_URL` est absent. Ne pas placer une URL réelle dans Git, une commande publiée ou les logs.
 
-| Variable         | Attente                                                                  |
-| ---------------- | ------------------------------------------------------------------------ |
-| `DB_CONNECTION`  | `pgsql` pour PostgreSQL, `sqlite` par défaut                             |
-| `DATABASE_URL`   | URL fournie au runtime : hôte, port, base et authentification si requise |
-| `DB_SSLMODE`     | `verify-full` par défaut : chiffrement et vérification du serveur        |
-| `DB_SSLROOTCERT` | Chemin du certificat d’autorité si nécessaire, fourni hors du dépôt      |
+| Variable         | Attente                                                                           |
+| ---------------- | --------------------------------------------------------------------------------- |
+| `DB_CONNECTION`  | `pgsql` pour PostgreSQL, `sqlite` par défaut                                      |
+| `DATABASE_URL`   | URL fournie au runtime : hôte, port, base et authentification si requise          |
+| `DB_SSLMODE`     | Mode facultatif de repli, seulement si l’URL ne fournit pas `sslmode`             |
+| `DB_SSLROOTCERT` | Autorité de confiance réelle ou magasin système explicitement configuré, hors Git |
 
-Les paramètres de l’URL priment sur les valeurs de configuration correspondantes. La connexion PostgreSQL utilise UTC et `READ COMMITTED`, nécessaires aux dates et au contrôle de version. L’utilisateur exécutant les migrations doit pouvoir créer les tables, index, fonctions et triggers dans son schéma. Le schéma par défaut est `public`.
+Tous les paramètres de l’URL priment sur les valeurs de repli correspondantes, notamment `sslmode`, `sslrootcert`, `timezone` et `isolation_level`. UTC et `READ COMMITTED` restent les valeurs de repli prévues pour les dates et le contrôle de version ; elles ne réécrivent pas une URL fournie. L’utilisateur exécutant les migrations doit pouvoir créer les tables, index, fonctions et triggers dans son schéma. Le schéma par défaut est `public`.
+
+Aucun mode TLS ni certificat racine n’est imposé par l’application. Le mode `require` chiffre la connexion ; `verify-full` ajoute la vérification de la chaîne de confiance et du nom du serveur. Pour une future base gérée, choisir explicitement `verify-full` seulement avec une autorité réelle fournie au runtime via `sslrootcert`/`DB_SSLROOTCERT`, ou un magasin système approprié explicitement sélectionné (`sslrootcert=system`, si libpq le prend en charge et si l’autorité du serveur y est reconnue). Aucun certificat fictif n’est fourni. Sans mode explicite, le comportement revient à libpq : ce n’est pas une garantie de chiffrement. [Référence TLS PostgreSQL](https://www.postgresql.org/docs/18/libpq-ssl.html).
 
 `composer run setup` et `deskops:prepare` restent réservés à SQLite local. Pour PostgreSQL, sur une base déjà fournie et sans lancer de service système : installer les lockfiles avec `composer install --no-interaction --prefer-dist` et `npm ci --ignore-scripts`, fournir la configuration et la clé applicative hors Git, puis exécuter `php artisan migrate --force --no-interaction` et `npm run build`. Aucun seed de démonstration n’est autorisé en production.
+
+### Future base de développement DigitalOcean
+
+Pour le futur composant de base nommé `deskops-db`, l’application située dans la **même région et le même VPC** devra recevoir `DATABASE_URL` via la référence symbolique `${deskops-db.DATABASE_PRIVATE_URL}`. Cette variable de liaison est résolue par DigitalOcean au runtime ; elle ne doit pas être utilisée comme un nom d’hôte littéral ni remplacée par une URL réelle dans Git. La connexion privée exige que les deux composants appartiennent effectivement au même VPC. [Variables de liaison DigitalOcean](https://docs.digitalocean.com/products/app-platform/how-to/use-environment-variables/).
+
+Conserver intégralement l’URL fournie par DigitalOcean et ses paramètres. Pour cette base de démonstration, le mode attendu est celui de l’URL, généralement `sslmode=require`, qui chiffre la connexion sans imposer une autorité racine absente. Ne pas remplacer ce mode par `verify-full` sans avoir configuré une confiance appropriée.
+
+Cette future base est une **base de développement pour des données fictives**, sans fonctionnalité de sauvegarde intégrée ; elle ne représente pas une base de production sauvegardée. Une exploitation de production demanderait une base gérée et une politique de sauvegarde décidées séparément. [Limites des sauvegardes de développement](https://docs.digitalocean.com/support/how-do-i-back-up-my-dev-database-on-app-platform/). Cette étape documente uniquement le choix : aucun App Spec, composant, hébergement ou base DigitalOcean n’est créé.
 
 ### Valider les deux moteurs
 
@@ -162,7 +172,7 @@ Cette commande exécute, dans l’ordre : validation stricte de Composer, vérif
 
 Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) conserve l’installation `composer run setup` sur une base SQLite neuve et ajoute une seconde exécution sur PostgreSQL 18. Les deux exécutent exactement `composer run check`, puis toute la suite dans un ordre aléatoire reproductible. Il tourne sous Ubuntu 24.04 et PHP 8.3, vérifie `pdo_pgsql`/`pdo_sqlite`/`sqlite3` et les versions Composer, Node et npm, puis installe les dépendances depuis les deux lockfiles. Il se déclenche sur les pushes vers `main` et `agent/**`, sur les PR vers `main` (brouillons compris), et manuellement.
 
-PostgreSQL utilise l’image officielle `postgres:18`, épinglée par digest, sans volume persistant ni base externe. Un contrôle de santé TCP attend sa disponibilité ; une requête vérifie ensuite la version majeure 18 avant les migrations depuis une base vide. L’authentification `trust` sans mot de passe et `sslmode=disable` concernent exclusivement ce service jetable, dont le port est publié sur la boucle locale du runner. La configuration applicative garde `verify-full` par défaut. Les deux contrôles sont bloquants et indépendants.
+PostgreSQL utilise l’image officielle `postgres:18`, épinglée par digest, sans volume persistant ni base externe. Un contrôle de santé TCP attend sa disponibilité ; une requête vérifie ensuite la version majeure 18 avant les migrations depuis une base vide. L’authentification `trust` sans mot de passe et `sslmode=disable` concernent exclusivement ce service jetable, dont le port est publié sur la boucle locale du runner. L’application respecte ce paramètre explicite de l’URL sans imposer un autre mode TLS. Les deux contrôles sont bloquants et indépendants.
 
 Les actions sont épinglées par SHA. Le jeton automatique GitHub est limité à la lecture du dépôt, sans persistance des identifiants Git. Seuls les caches de téléchargement Composer/npm sont réutilisés ; ni `vendor`, ni `node_modules`, ni `.env`, ni base SQLite ne sont mis en cache. Aucun secret GitHub supplémentaire ni étape de déploiement ne sont nécessaires.
 
