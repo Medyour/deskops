@@ -14,7 +14,7 @@ Le contrat complet se trouve dans [docs/MVP.md](docs/MVP.md), les choix de struc
 
 ## Stack
 
-- PHP **8.3+** (CI sous 8.3), Laravel **13**, Fortify ; Composer **2.9.5** (`.composer-version`).
+- PHP **8.3+** (CI sous 8.3), Laravel **13**, Fortify ; Composer **2.10.3** (`.composer-version`).
 - SQLite pour les données, sessions et cache ; aucune infrastructure additionnelle.
 - Blade, Tailwind CSS **4**, Vite **8**, fontes système.
 - Node **24.19.0** (`.node-version`, minimum compatible **22.12**) et npm **11.17.0** (`packageManager` dans `package.json`) ; dépendances exactes dans les lockfiles.
@@ -25,7 +25,7 @@ Les vues ne dépendent pas de JavaScript. Vue sera réservé à de futurs îlots
 
 ## Installation locale
 
-Prérequis : PHP 8.3 avec PDO SQLite, sqlite3, mbstring, openssl, fileinfo, curl, dom, xml et zip ; Composer 2, Node/npm et Git.
+Prérequis : PHP 8.3 avec PDO SQLite, sqlite3, mbstring, openssl, fileinfo, curl, dom, xml et zip ; Composer 2.10.3, Node/npm aux versions indiquées ci-dessus et Git.
 
 Depuis la racine du projet :
 
