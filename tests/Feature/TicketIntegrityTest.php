@@ -53,7 +53,7 @@ test('resolution and closure require consistent timestamps at database level', f
     'closed before resolution' => [['status' => 'closed', 'resolved_at' => '2026-02-01 12:00:00', 'closed_at' => '2026-02-01 11:00:00']],
 ]);
 
-test('activities and comments resist update delete and SQL replacement', function (string $table, string $operation) {
+test('activities and comments resist update delete replacement and clearing their tables', function (string $table, string $operation) {
     $actor = User::factory()->administrator()->create();
     $ticket = app(CreateTicket::class)->execute($actor, ticketCoreInput());
     app(AddComment::class)->execute($actor, $ticket, ['version' => 1, 'body' => 'Commentaire fictif immuable']);
@@ -64,12 +64,26 @@ test('activities and comments resist update delete and SQL replacement', functio
             DB::table($table)->where('id', $record['id'])->update(['created_at' => '2030-01-01 00:00:00']);
         } elseif ($operation === 'delete') {
             DB::table($table)->where('id', $record['id'])->delete();
+        } elseif ($operation === 'truncate') {
+            if (DB::getDriverName() === 'pgsql') {
+                DB::statement("TRUNCATE TABLE {$table}");
+            } else {
+                DB::table($table)->delete();
+            }
         } else {
             $columns = implode(', ', array_keys($record));
             $placeholders = implode(', ', array_fill(0, count($record), '?'));
-            DB::statement("INSERT OR REPLACE INTO {$table} ({$columns}) VALUES ({$placeholders})", array_values($record));
+            $sql = DB::getDriverName() === 'pgsql'
+                ? "INSERT INTO {$table} ({$columns}) VALUES ({$placeholders}) ON CONFLICT (id) DO UPDATE SET created_at = EXCLUDED.created_at"
+                : "INSERT OR REPLACE INTO {$table} ({$columns}) VALUES ({$placeholders})";
+            DB::statement($sql, array_values($record));
         }
-    })->toThrow(QueryException::class);
+    })->toThrow(QueryException::class, match ([$table, $operation === 'replace']) {
+        ['comments', true] => 'Comments cannot be replaced',
+        ['ticket_activities', true] => 'Ticket activities cannot be replaced',
+        ['comments', false] => 'Comments are immutable',
+        default => 'Ticket activities are append-only',
+    });
 
     expect((array) DB::table($table)->where('id', $record['id'])->first())->toBe($record);
     $this->assertDatabaseCount('ticket_activities', 2);
@@ -77,6 +91,7 @@ test('activities and comments resist update delete and SQL replacement', functio
 })->with([
     ['ticket_activities', 'update'], ['ticket_activities', 'delete'], ['ticket_activities', 'replace'],
     ['comments', 'update'], ['comments', 'delete'], ['comments', 'replace'],
+    ['ticket_activities', 'truncate'], ['comments', 'truncate'],
 ]);
 
 test('an activity write failure rolls back every associated mutation', function (string $operation) {
@@ -84,7 +99,7 @@ test('an activity write failure rolls back every associated mutation', function 
     $agent = User::factory()->create();
     $ticket = Ticket::factory()->inStatus(TicketStatus::InProgress)->create();
     $before = $ticket->fresh()->getAttributes();
-    DB::statement("CREATE TRIGGER test_unavailable_history BEFORE INSERT ON ticket_activities BEGIN SELECT RAISE(ABORT, 'Test history write failed'); END");
+    $restoreHistory = $this->preventActivityWrites();
 
     try {
         expect(fn () => match ($operation) {
@@ -94,7 +109,7 @@ test('an activity write failure rolls back every associated mutation', function 
             'comment' => app(AddComment::class)->execute($actor, $ticket, ['version' => 1, 'body' => 'Suivi fictif']),
         })->toThrow(QueryException::class);
     } finally {
-        DB::statement('DROP TRIGGER test_unavailable_history');
+        $restoreHistory();
     }
 
     expect($ticket->fresh()->getAttributes())->toBe($before);
@@ -111,8 +126,11 @@ test('SQL replacement cannot erase the creation activity through its secondary u
     $columns = implode(', ', array_keys($replacement));
     $placeholders = implode(', ', array_fill(0, count($replacement), '?'));
 
-    expect(fn () => DB::statement("INSERT OR REPLACE INTO ticket_activities ({$columns}) VALUES ({$placeholders})", array_values($replacement)))
-        ->toThrow(QueryException::class);
+    $sql = DB::getDriverName() === 'pgsql'
+        ? "INSERT INTO ticket_activities ({$columns}) VALUES ({$placeholders}) ON CONFLICT (ticket_id) WHERE type = 'ticket_created' DO UPDATE SET changes = EXCLUDED.changes"
+        : "INSERT OR REPLACE INTO ticket_activities ({$columns}) VALUES ({$placeholders})";
+    expect(fn () => DB::statement($sql, array_values($replacement)))
+        ->toThrow(QueryException::class, 'Ticket activities cannot be replaced');
 
     expect((array) DB::table('ticket_activities')->first())->toBe($original);
     $this->assertDatabaseCount('ticket_activities', 1);
@@ -153,7 +171,12 @@ test('history rejects unknown actors malformed metadata and duplicate creation',
 
 test('ticket references stay unique and stable above four digits', function () {
     $agent = User::factory()->create();
-    $ticket = Ticket::factory()->create(['id' => 10000]);
+    if (DB::getDriverName() === 'pgsql') {
+        DB::statement('ALTER SEQUENCE tickets_id_seq RESTART WITH 10000');
+        $ticket = Ticket::factory()->create();
+    } else {
+        $ticket = Ticket::factory()->create(['id' => 10000]);
+    }
     $next = app(CreateTicket::class)->execute($agent, ticketCoreInput());
 
     app(AssignTicket::class)->execute($agent, $ticket, ['version' => 1, 'assigned_to' => $agent->id]);

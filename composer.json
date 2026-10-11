@@ -11,6 +11,8 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "ext-pdo_pgsql": "*",
+        "ext-pdo_sqlite": "*",
         "laravel/fortify": "^1.41",
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0"

@@ -3,8 +3,14 @@
 test('local preparation preserves an existing application key', function () {
     $this->app->detectEnvironment(fn (): string => 'local');
     config(['app.key' => 'existing-local-key']);
+    $originalDriver = config('database.default');
+    config(['database.default' => 'sqlite']);
 
-    $this->artisan('deskops:prepare')->assertSuccessful();
+    try {
+        $this->artisan('deskops:prepare')->assertSuccessful();
+    } finally {
+        config(['database.default' => $originalDriver]);
+    }
 
     expect(config('app.key'))->toBe('existing-local-key');
 });

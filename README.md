@@ -17,7 +17,7 @@ Le contrat complet se trouve dans [docs/MVP.md](docs/MVP.md), les choix de struc
 ## Stack
 
 - PHP **8.3+** (CI sous 8.3), Laravel **13**, Fortify ; Composer **2.10.3** (`.composer-version`).
-- SQLite pour les données, sessions et cache ; aucune infrastructure additionnelle.
+- SQLite pour le développement local rapide ; PostgreSQL **18** comme moteur cible de production. Sessions et cache utilisent le moteur choisi.
 - Blade, Tailwind CSS **4**, Vite **8**, fontes système.
 - Node **24.19.0** (`.node-version`, minimum compatible **22.12**) et npm **11.17.0** (`packageManager` dans `package.json`) ; dépendances exactes dans les lockfiles.
 - Pest **4** / PHPUnit, Laravel Pint et Prettier.
@@ -27,7 +27,7 @@ Les vues ne dépendent pas de JavaScript. Vue sera réservé à de futurs îlots
 
 ## Installation locale
 
-Prérequis : PHP 8.3 avec PDO SQLite, sqlite3, mbstring, openssl, fileinfo, curl, dom, xml et zip ; Composer 2.10.3, Node/npm aux versions indiquées ci-dessus et Git.
+Prérequis : PHP 8.3 avec PDO PostgreSQL (`pdo_pgsql`), PDO SQLite (`pdo_sqlite`), sqlite3, mbstring, openssl, fileinfo, curl, dom, xml et zip ; Composer 2.10.3, Node/npm aux versions indiquées ci-dessus et Git. Composer déclare et contrôle les deux pilotes ; il n’installe pas les extensions natives de PHP.
 
 Depuis la racine du projet :
 
@@ -52,7 +52,7 @@ Si des tickets étrangers à la fixture existent, si la fixture est partielle ou
 
 ### Contrat des mutations
 
-Les actions de `app/Actions/Tickets` centralisent validation, autorisation, transaction et activité. La référence `DS-0001` dérive de la clé primaire SQLite et reste unique au-delà de quatre chiffres. Les mutations transmettent la version observée du ticket ; une version obsolète ou un verrou SQLite entraîne un conflit HTTP 409, sans écriture partielle. Les répétitions autorisées à jour sont sans effet.
+Les actions de `app/Actions/Tickets` centralisent validation, autorisation, transaction et activité. La référence `DS-0001` dérive de la clé primaire auto-incrémentée et reste unique au-delà de quatre chiffres, sur les deux moteurs. Des trous dans la séquence sont normaux, notamment après un rollback PostgreSQL. Les mutations transmettent la version observée du ticket ; une version obsolète ou un conflit de verrou entraîne un conflit HTTP 409, sans écriture partielle. Les répétitions autorisées à jour sont sans effet.
 
 Les pages protégées sont `GET /tickets`, `/tickets/create`, `/tickets/{ticket}` et `/tickets/{ticket}/edit`. Les cinq mutations sous session/CSRF couvrent création, édition, assignation, statut et commentaire. Les contrôleurs délèguent aux actions et redirigent vers le détail. L’édition ajoute une activité par catégorie modifiée et n’incrémente la version qu’une fois. Le graphe, les motifs obligatoires et les permissions détaillées sont définis dans [le contrat du MVP](docs/MVP.md).
 
@@ -105,6 +105,45 @@ php artisan deskops:demo
 
 La configuration par défaut utilise `database/database.sqlite`. Aucun identifiant de base n’est requis. Les assets construits permettent aussi de consulter l’application sans serveur Vite.
 
+### Configuration PostgreSQL 18 au runtime
+
+Le moteur cible de production est PostgreSQL 18 ; aucun service de production n’est créé par ce dépôt. Fournir `DB_CONNECTION=pgsql` et `DATABASE_URL` dans l’environnement du processus. L’URL est interprétée par Laravel (schémas `postgres` ou `postgresql`) ; `DB_URL` reste un alias de secours si `DATABASE_URL` est absent. Ne pas placer une URL réelle dans Git, une commande publiée ou les logs.
+
+| Variable         | Attente                                                                  |
+| ---------------- | ------------------------------------------------------------------------ |
+| `DB_CONNECTION`  | `pgsql` pour PostgreSQL, `sqlite` par défaut                             |
+| `DATABASE_URL`   | URL fournie au runtime : hôte, port, base et authentification si requise |
+| `DB_SSLMODE`     | `verify-full` par défaut : chiffrement et vérification du serveur        |
+| `DB_SSLROOTCERT` | Chemin du certificat d’autorité si nécessaire, fourni hors du dépôt      |
+
+Les paramètres de l’URL priment sur les valeurs de configuration correspondantes. La connexion PostgreSQL utilise UTC et `READ COMMITTED`, nécessaires aux dates et au contrôle de version. L’utilisateur exécutant les migrations doit pouvoir créer les tables, index, fonctions et triggers dans son schéma. Le schéma par défaut est `public`.
+
+`composer run setup` et `deskops:prepare` restent réservés à SQLite local. Pour PostgreSQL, sur une base déjà fournie et sans lancer de service système : installer les lockfiles avec `composer install --no-interaction --prefer-dist` et `npm ci --ignore-scripts`, fournir la configuration et la clé applicative hors Git, puis exécuter `php artisan migrate --force --no-interaction` et `npm run build`. Aucun seed de démonstration n’est autorisé en production.
+
+### Valider les deux moteurs
+
+La suite SQLite utilise une base en mémoire ; les tests de migrations et de concurrence créent des fichiers temporaires. Depuis un shell POSIX :
+
+```sh
+DB_CONNECTION=sqlite DB_DATABASE=:memory: DB_URL= DATABASE_URL= composer run check
+DB_CONNECTION=sqlite DB_DATABASE=:memory: DB_URL= DATABASE_URL= php vendor/bin/pest --compact --order-by=random --random-order-seed=20261011
+```
+
+Pour PostgreSQL, fournir d’abord une `DATABASE_URL` vers une **base de test jetable**, dont le nom se termine par `_test`. La suite refuse une autre base ou un environnement autre que `testing`. Chaque test recrée le schéma : elle détruit donc les données de cette base. Les tests de concurrence et de rollback utilisent des schémas temporaires distincts, supprimés après le contrôle. Ne jamais utiliser une base contenant des données à conserver.
+
+```sh
+# DATABASE_URL est déjà fourni au processus, exclusivement vers la base jetable.
+DB_CONNECTION=pgsql APP_ENV=testing php artisan migrate:fresh --force --no-interaction
+DB_CONNECTION=pgsql APP_ENV=testing php artisan migrate:rollback --step=3 --force --no-interaction
+DB_CONNECTION=pgsql APP_ENV=testing php artisan migrate --force --no-interaction
+DB_CONNECTION=pgsql APP_ENV=testing composer run check
+DB_CONNECTION=pgsql APP_ENV=testing php vendor/bin/pest --compact --order-by=random --random-order-seed=20261011
+```
+
+En PowerShell, définir les mêmes variables avec `$env:DB_CONNECTION = 'pgsql'` et `$env:APP_ENV = 'testing'`, puis exécuter les commandes sans leurs préfixes POSIX. La suite vérifie aussi l’installation vide, les rollbacks sans triggers/fonctions résiduels et deux appels à `deskops:demo` en environnement local simulé, sans exposer les accès générés.
+
+Sur la machine ayant préparé cette compatibilité, les deux pilotes PHP sont disponibles mais aucun serveur PostgreSQL ni Docker ne l’est. Aucun service système n’a été installé : la validation PostgreSQL réelle est assurée par le service éphémère de la CI. SQLite reste immédiatement utilisable localement.
+
 ### Récupération du mot de passe en local
 
 Le formulaire « Mot de passe oublié » utilise Fortify et le broker Laravel. Avec `MAIL_MAILER=log`, le lien est écrit dans `storage/logs/laravel.log` ; aucun e-mail réel n’est envoyé. Ce journal contient des liens temporaires et reste ignoré par Git. Le nouveau mot de passe exige au moins 12 caractères, une majuscule, une minuscule et un chiffre.
@@ -121,7 +160,9 @@ composer run check
 
 Cette commande exécute, dans l’ordre : validation stricte de Composer, vérification des exigences de la plateforme, audit Composer (y compris les dépendances de développement), Pint en vérification, suite Laravel, audit npm, Prettier en vérification, le script de tests JavaScript s’il est défini, puis le build Vite. Elle s’arrête si un contrôle échoue. Aucun audit ou test présent n’est rendu facultatif.
 
-Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) exécute l’installation `composer run setup` sur une base SQLite neuve, puis exactement `composer run check`. Il tourne sous Ubuntu 24.04 et PHP 8.3, vérifie `pdo_sqlite`/`sqlite3` et les versions Composer, Node et npm, puis installe les dépendances depuis les deux lockfiles. Il se déclenche sur les pushes vers `main` et `agent/**`, sur les PR vers `main` (brouillons compris), et manuellement.
+Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) conserve l’installation `composer run setup` sur une base SQLite neuve et ajoute une seconde exécution sur PostgreSQL 18. Les deux exécutent exactement `composer run check`, puis toute la suite dans un ordre aléatoire reproductible. Il tourne sous Ubuntu 24.04 et PHP 8.3, vérifie `pdo_pgsql`/`pdo_sqlite`/`sqlite3` et les versions Composer, Node et npm, puis installe les dépendances depuis les deux lockfiles. Il se déclenche sur les pushes vers `main` et `agent/**`, sur les PR vers `main` (brouillons compris), et manuellement.
+
+PostgreSQL utilise l’image officielle `postgres:18`, épinglée par digest, sans volume persistant ni base externe. Un contrôle de santé TCP attend sa disponibilité ; une requête vérifie ensuite la version majeure 18 avant les migrations depuis une base vide. L’authentification `trust` sans mot de passe et `sslmode=disable` concernent exclusivement ce service jetable, dont le port est publié sur la boucle locale du runner. La configuration applicative garde `verify-full` par défaut. Les deux contrôles sont bloquants et indépendants.
 
 Les actions sont épinglées par SHA. Le jeton automatique GitHub est limité à la lecture du dépôt, sans persistance des identifiants Git. Seuls les caches de téléchargement Composer/npm sont réutilisés ; ni `vendor`, ni `node_modules`, ni `.env`, ni base SQLite ne sont mis en cache. Aucun secret GitHub supplémentaire ni étape de déploiement ne sont nécessaires.
 
@@ -140,34 +181,34 @@ composer audit
 npm audit
 ```
 
-Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; les tests de concurrence et de migrations utilisent des fichiers SQLite temporaires supprimés après les tests. Ils couvrent aussi les pages, filtres combinés, pagination, requêtes sans N+1, textes échappés, brouillons après 409 et édition atomique. Ils couvrent l’authentification et les rôles, les transitions autorisées/interdites, les entrées invalides, l’assignation, les versions obsolètes, les verrous SQLite, le rollback de l’historique, les contraintes SQL, la réversibilité des migrations et l’idempotence de la fixture. Les tests Unit couvrent le graphe complet des statuts. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
+La même suite Feature s’exécute sur les deux moteurs, sans modifier la base SQLite locale. PostgreSQL utilise `DatabaseMigrations` entre les tests, car ses séquences ne sont pas annulées avec les transactions ; SQLite conserve `RefreshDatabase`. Les tests couvrent les pages, filtres combinés, pagination, requêtes sans N+1, textes échappés, brouillons après 409 et édition atomique, ainsi que l’authentification, les rôles, les transitions, les entrées invalides, l’assignation, les versions obsolètes, les verrous, le rollback de l’historique, les contraintes SQL, la réversibilité des migrations et l’idempotence de la fixture. Les tests Unit couvrent le graphe complet des statuts. Aucune suite JavaScript ni script `test` npm n’existent encore. `npm run test --if-present` exécute automatiquement ce script lorsqu’il sera ajouté, sans ignorer ses échecs.
 
 ## Fichiers à connaître
 
-| Emplacement                                                  | Responsabilité                                               |
-| ------------------------------------------------------------ | ------------------------------------------------------------ |
-| `routes/web.php`                                             | Vitrine, espaces protégés et mutations des tickets           |
-| `app/Enums/UserRole.php`                                     | Rôles typés                                                  |
-| `app/Models/User.php`                                        | Utilisateur et casts                                         |
-| `app/Providers/FortifyServiceProvider.php`                   | Authentification et vues                                     |
-| `app/Providers/AppServiceProvider.php`                       | Gate et politique de mot de passe                            |
-| `config/fortify.php`                                         | Fonctionnalités d’authentification activées                  |
-| `database/migrations`                                        | Schéma, clés étrangères, index et contraintes SQLite         |
-| `app/Models/Ticket.php`, `Comment.php`, `TicketActivity.php` | Relations et casts métier                                    |
-| `app/Enums/TicketStatus.php`, `TicketPriority.php`           | Statuts, graphe et priorités typés                           |
-| `app/Actions/Tickets`                                        | Mutations transactionnelles et contrôle de version           |
-| `app/Policies/TicketPolicy.php`, `app/Http/Requests`         | Autorisations et validation Laravel                          |
-| `app/Actions/Tickets/OperationsDashboard.php`                | Agrégations et files du tableau de bord                      |
-| `app/Enums/TicketQueue.php`, `Ticket::inQueue`               | Prédicats partagés des vues opérationnelles                  |
-| `app/Http/Controllers/DashboardController.php`               | Accueil authentifié et périmètre validé                      |
-| `database/seeders/DemoUserSeeder.php`                        | Identités déterministes                                      |
-| `database/seeders/DemoTicketSeeder.php`                      | Fixture déterministe, sans écrasement                        |
-| `app/Console/Commands/PrepareDemoAccounts.php`               | Préparation des accès locaux                                 |
-| `resources/views`                                            | Vitrine, formulaires et espaces équipe                       |
-| `tests/Feature`, `tests/Unit`                                | Scénarios HTTP, sécurité, métier, intégrité et démonstration |
-| `composer.json`, `package.json`                              | Scripts de développement et de qualité                       |
-| `.github/workflows/ci.yml`                                   | CI GitHub Actions                                            |
-| `.node-version`, `.composer-version`                         | Versions des outils de développement et CI                   |
+| Emplacement                                                  | Responsabilité                                                  |
+| ------------------------------------------------------------ | --------------------------------------------------------------- |
+| `routes/web.php`                                             | Vitrine, espaces protégés et mutations des tickets              |
+| `app/Enums/UserRole.php`                                     | Rôles typés                                                     |
+| `app/Models/User.php`                                        | Utilisateur et casts                                            |
+| `app/Providers/FortifyServiceProvider.php`                   | Authentification et vues                                        |
+| `app/Providers/AppServiceProvider.php`                       | Gate et politique de mot de passe                               |
+| `config/fortify.php`                                         | Fonctionnalités d’authentification activées                     |
+| `database/migrations`                                        | Schéma, clés étrangères, index et protections SQLite/PostgreSQL |
+| `app/Models/Ticket.php`, `Comment.php`, `TicketActivity.php` | Relations et casts métier                                       |
+| `app/Enums/TicketStatus.php`, `TicketPriority.php`           | Statuts, graphe et priorités typés                              |
+| `app/Actions/Tickets`                                        | Mutations transactionnelles et contrôle de version              |
+| `app/Policies/TicketPolicy.php`, `app/Http/Requests`         | Autorisations et validation Laravel                             |
+| `app/Actions/Tickets/OperationsDashboard.php`                | Agrégations et files du tableau de bord                         |
+| `app/Enums/TicketQueue.php`, `Ticket::inQueue`               | Prédicats partagés des vues opérationnelles                     |
+| `app/Http/Controllers/DashboardController.php`               | Accueil authentifié et périmètre validé                         |
+| `database/seeders/DemoUserSeeder.php`                        | Identités déterministes                                         |
+| `database/seeders/DemoTicketSeeder.php`                      | Fixture déterministe, sans écrasement                           |
+| `app/Console/Commands/PrepareDemoAccounts.php`               | Préparation des accès locaux                                    |
+| `resources/views`                                            | Vitrine, formulaires et espaces équipe                          |
+| `tests/Feature`, `tests/Unit`                                | Scénarios HTTP, sécurité, métier, intégrité et démonstration    |
+| `composer.json`, `package.json`                              | Scripts de développement et de qualité                          |
+| `.github/workflows/ci.yml`                                   | CI GitHub Actions                                               |
+| `.node-version`, `.composer-version`                         | Versions des outils de développement et CI                      |
 
 ## Feuille de route
 
@@ -176,6 +217,7 @@ Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; l
 3. **Cœur métier des tickets — livré** : migrations, enums, policy, validations, assignation, transitions, historique immuable, commentaires internes et fixture de 12 tickets ; tests des refus et de la concurrence.
 4. **Parcours des tickets — livré** : liste, détail, création, édition des champs/priorités, commentaires et chronologie ; messages français de validation et de conflit ; recherche, filtres persistants et pagination ; parcours responsive sans JavaScript.
 5. **Pilotage — livré** : indicateurs testés, répartitions, charge active, file priorisée, créations et activités récentes, liens filtrés et vue personnelle en Blade.
-6. **Finition de la vitrine** : parcours de démonstration, vérifications clavier/mobile et documentation finale.
+6. **Compatibilité PostgreSQL 18** : migrations, protections d’intégrité et suite complète sur deux moteurs, SQLite conservé localement.
+7. **Finition de la vitrine** : parcours de démonstration, vérifications clavier/mobile et documentation finale.
 
 Le dépôt GitHub est privé : [`Medyour/deskops`](https://github.com/Medyour/deskops). La CI ne publie aucun site ni artefact de déploiement. Aucun hébergement ou domaine n’est configuré. Le contrat détaillé du MVP fait foi pour les prochaines étapes métier.

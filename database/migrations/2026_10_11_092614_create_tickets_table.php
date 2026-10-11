@@ -32,6 +32,12 @@ return new class extends Migration
             $table->index('created_by');
         });
 
+        if (DB::getDriverName() === 'pgsql') {
+            $this->createPostgresProtections();
+
+            return;
+        }
+
         $invalid = <<<'SQL'
             length(trim(NEW.title)) NOT BETWEEN 5 AND 160
             OR length(trim(NEW.description)) NOT BETWEEN 10 AND 10000
@@ -59,7 +65,58 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('DROP TRIGGER IF EXISTS users_preserve_assignee_role ON users');
+            Schema::dropIfExists('tickets');
+            DB::statement('DROP FUNCTION IF EXISTS deskops_ticket_assignee()');
+            DB::statement('DROP FUNCTION IF EXISTS deskops_preserve_assignee_role()');
+
+            return;
+        }
         DB::statement('DROP TRIGGER IF EXISTS users_preserve_assignee_role');
         Schema::dropIfExists('tickets');
+    }
+
+    private function createPostgresProtections(): void
+    {
+        DB::statement(<<<'SQL'
+            ALTER TABLE tickets ADD CONSTRAINT tickets_valid_fields CHECK (
+                length(trim(title)) BETWEEN 5 AND 160
+                AND length(trim(description)) BETWEEN 10 AND 10000
+                AND length(trim(requester_name)) BETWEEN 2 AND 120
+                AND length(requester_email) BETWEEN 3 AND 254 AND version > 0
+            ), ADD CONSTRAINT tickets_valid_state CHECK (
+                (status = 'new' OR assigned_to IS NOT NULL)
+                AND (status NOT IN ('new', 'in_progress', 'waiting_customer') OR (resolved_at IS NULL AND closed_at IS NULL))
+                AND (status <> 'resolved' OR (resolved_at IS NOT NULL AND closed_at IS NULL))
+                AND (status <> 'closed' OR (resolved_at IS NOT NULL AND closed_at IS NOT NULL AND closed_at >= resolved_at))
+            )
+            SQL);
+        DB::unprepared(<<<'SQL'
+            CREATE OR REPLACE FUNCTION deskops_ticket_assignee() RETURNS trigger LANGUAGE plpgsql AS $$
+            DECLARE assignee_role text;
+            BEGIN
+                IF NEW.assigned_to IS NOT NULL THEN
+                    SELECT role INTO assignee_role FROM users WHERE id = NEW.assigned_to FOR SHARE;
+                    IF assignee_role IS DISTINCT FROM 'agent' THEN
+                        RAISE EXCEPTION 'Assigned users must be agents' USING ERRCODE = '23514';
+                    END IF;
+                END IF;
+                RETURN NEW;
+            END;
+            $$;
+            CREATE TRIGGER tickets_validate_assignee BEFORE INSERT OR UPDATE ON tickets
+                FOR EACH ROW EXECUTE FUNCTION deskops_ticket_assignee();
+            CREATE OR REPLACE FUNCTION deskops_preserve_assignee_role() RETURNS trigger LANGUAGE plpgsql AS $$
+            BEGIN
+                IF NEW.role <> 'agent' AND EXISTS (SELECT 1 FROM tickets WHERE assigned_to = OLD.id) THEN
+                    RAISE EXCEPTION 'Assigned users must remain agents' USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+            END;
+            $$;
+            CREATE TRIGGER users_preserve_assignee_role BEFORE UPDATE OF role ON users
+                FOR EACH ROW EXECUTE FUNCTION deskops_preserve_assignee_role();
+            SQL);
     }
 };

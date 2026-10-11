@@ -1,9 +1,10 @@
 <?php
 
+use Illuminate\Foundation\Testing\DatabaseMigrations;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
-pest()->extend(TestCase::class)->use(RefreshDatabase::class)->in('Feature');
+pest()->extend(TestCase::class)->use(env('DB_CONNECTION') === 'pgsql' ? DatabaseMigrations::class : RefreshDatabase::class)->in('Feature');
 
 /** @return array{title: string, description: string, requester_name: string, requester_email: string} */
 function ticketCoreInput(): array
