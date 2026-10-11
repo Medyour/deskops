@@ -16,11 +16,11 @@ test('ticket mutation endpoints require a session', function (string $operation)
     $this->assertDatabaseCount('ticket_activities', 0);
 })->with(['store', 'tickets.assign', 'tickets.change-status']);
 
-test('session authenticated creation persists a ticket and redirects to the team space', function () {
+test('session authenticated creation persists a ticket and redirects to its detail', function () {
     $actor = User::factory()->create();
 
     $this->actingAs($actor)->post(route('tickets.store'), ticketCoreInput())
-        ->assertRedirect(route('dashboard'))->assertSessionHas('status', 'Ticket DS-0001 créé.');
+        ->assertRedirect(route('tickets.show', 1))->assertSessionHas('status', 'Ticket DS-0001 créé.');
 
     $this->assertDatabaseHas('tickets', ['created_by' => $actor->id, 'status' => 'new', 'assigned_to' => null]);
     $this->assertDatabaseCount('ticket_activities', 1);
@@ -74,7 +74,7 @@ test('the status endpoint invokes the business action and preserves its activity
     $ticket = Ticket::factory()->inStatus(TicketStatus::InProgress)->assignedTo($agent)->create();
 
     $this->actingAs($agent)->patch(route('tickets.change-status', $ticket), ['version' => 1, 'status' => 'resolved', 'reason' => 'Solution fictive proposée'])
-        ->assertRedirect(route('dashboard'));
+        ->assertRedirect(route('tickets.show', $ticket));
 
     $this->assertDatabaseHas('tickets', ['id' => $ticket->id, 'status' => 'resolved', 'version' => 2]);
     $this->assertDatabaseHas('ticket_activities', ['ticket_id' => $ticket->id, 'actor_id' => $agent->id, 'reason' => 'Solution fictive proposée']);

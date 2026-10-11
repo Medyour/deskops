@@ -6,6 +6,7 @@ use App\Enums\TicketPriority;
 use App\Enums\TicketStatus;
 use Database\Factories\TicketFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -21,7 +22,39 @@ class Ticket extends Model
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['status' => TicketStatus::class, 'priority' => TicketPriority::class, 'version' => 'integer', 'resolved_at' => 'immutable_datetime', 'closed_at' => 'immutable_datetime'];
+        return ['status' => TicketStatus::class, 'priority' => TicketPriority::class, 'version' => 'integer', 'resolved_at' => 'immutable_datetime', 'closed_at' => 'immutable_datetime', 'last_activity_at' => 'immutable_datetime'];
+    }
+
+    /**
+     * @param  Builder<Ticket>  $query
+     * @param  array{q?: string|null, status?: string|null, priority?: string|null, assignee?: string|null, page?: int|null}  $filters
+     * @return Builder<Ticket>
+     */
+    public function scopeFiltered(Builder $query, array $filters, int $viewerId): Builder
+    {
+        if (($search = $filters['q'] ?? '') !== '') {
+            $literal = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
+            $query->where(function (Builder $searchQuery) use ($search, $literal): void {
+                $searchQuery->whereRaw("printf('DS-%04d', id) = ? COLLATE NOCASE", [$search]);
+                foreach (['title', 'requester_name', 'requester_email'] as $field) {
+                    $searchQuery->orWhereRaw($field." LIKE ? ESCAPE '\\'", [$literal]);
+                }
+            });
+        }
+        foreach (['status', 'priority'] as $field) {
+            if (! empty($filters[$field])) {
+                $query->where($field, $filters[$field]);
+            }
+        }
+        if (! empty($filters['assignee'])) {
+            if ($filters['assignee'] === 'unassigned') {
+                $query->whereNull('assigned_to');
+            } else {
+                $query->where('assigned_to', $filters['assignee'] === 'me' ? $viewerId : (int) $filters['assignee']);
+            }
+        }
+
+        return $query;
     }
 
     /** @return Attribute<string, never> */

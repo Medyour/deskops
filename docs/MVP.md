@@ -6,9 +6,11 @@ DeskOps est un mini-centre de support **interne**, destiné à une petite équip
 
 **Étape 1 livrée :** vitrine, connexion/déconnexion, session persistante optionnelle, récupération et confirmation du mot de passe, deux rôles, espaces protégés, trois comptes locaux, outillage et tests. Le tableau de bord actuel est un écran d’accueil sans indicateurs métier.
 
-**Cœur métier livré :** schéma des tickets, enums, autorisations, création, assignation, transitions, ajout interne de commentaires, historique immuable et fixture déterministe. Les mutations disposent de points d’entrée web authentifiés ; aucune interface complète de tickets n’est encore construite.
+**Cœur métier livré :** schéma des tickets, enums, autorisations, création, assignation, transitions, ajout interne de commentaires, historique immuable et fixture déterministe. Les mutations disposent de points d’entrée web authentifiés, reliés aux pages de tickets.
 
-**MVP restant :** formulaires et pages de tickets, édition des champs et priorités, présentation des commentaires et de l’historique, liste filtrable et indicateurs.
+**Espace tickets livré :** liste paginée et filtrable, création, détail, édition des champs/priorités, commentaires, chronologie et actions autorisées. Les conflits 409 présentent la saisie non enregistrée et les valeurs actuelles, avec reprise explicite après vérification.
+
+**MVP restant :** indicateurs du tableau de bord et finition de la vitrine.
 
 Hors périmètre : inscription publique, gestion graphique des comptes/rôles, portail client, e-mail entrant ou sortant des tickets, pièces jointes, SLA, notifications métier, chat, temps réel, API publique, multi-tenant, suppression de tickets et automatisation des statuts. La récupération d’accès utilise le transport mail local de Laravel.
 

@@ -3,9 +3,8 @@
 namespace App\Http\Requests;
 
 use App\Actions\Tickets\TicketInput;
-use Illuminate\Foundation\Http\FormRequest;
 
-class ChangeTicketStatusRequest extends FormRequest
+class ChangeTicketStatusRequest extends TicketFormRequest
 {
     public function authorize(): bool
     {

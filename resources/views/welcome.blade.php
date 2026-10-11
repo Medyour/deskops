@@ -20,11 +20,12 @@
         <aside aria-labelledby="foundation-title" class="rounded-3xl bg-teal-900 p-7 text-white sm:p-9">
             <p class="text-xs font-medium tracking-widest text-teal-200 uppercase">01 / Fondations</p>
             <h2 id="foundation-title" class="mt-6 text-2xl font-semibold tracking-tight">Le point de départ<br>d’un support organisé.</h2>
-            <p class="mt-4 text-sm leading-relaxed text-teal-100">L’espace équipe et les accès sont prêts. Les outils de traitement des tickets arrivent à la prochaine étape.</p>
+            <p class="mt-4 text-sm leading-relaxed text-teal-100">L’espace équipe, les accès et le traitement des tickets sont prêts. Les indicateurs du tableau de bord viendront à la prochaine étape.</p>
             <ul class="mt-8 space-y-4 text-sm">
                 <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Authentification</span><span class="rounded-full bg-white/10 px-3 py-1 text-xs">Disponible</span></li>
                 <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Rôles de l’équipe</span><span class="rounded-full bg-white/10 px-3 py-1 text-xs">Disponible</span></li>
-                <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Workflow des tickets</span><span class="text-xs text-teal-200">À venir</span></li>
+                <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Workflow des tickets</span><span class="text-xs text-teal-200">Disponible</span></li>
+                <li class="flex items-center justify-between border-t border-white/20 pt-4"><span>Tableau de bord</span><span class="text-xs text-teal-200">À venir</span></li>
             </ul>
         </aside>
     </div>

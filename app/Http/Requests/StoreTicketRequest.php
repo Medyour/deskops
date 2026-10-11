@@ -4,9 +4,8 @@ namespace App\Http\Requests;
 
 use App\Actions\Tickets\TicketInput;
 use App\Models\Ticket;
-use Illuminate\Foundation\Http\FormRequest;
 
-class StoreTicketRequest extends FormRequest
+class StoreTicketRequest extends TicketFormRequest
 {
     public function authorize(): bool
     {

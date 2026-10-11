@@ -14,12 +14,19 @@
 
     a,
     button,
-    input {
+    input,
+    select,
+    textarea,
+    summary,
+    [tabindex] {
         @apply focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-700;
     }
 }
 
 @layer components {
+    .eyebrow {
+        @apply text-xs font-bold tracking-widest text-teal-800 uppercase;
+    }
     .button {
         @apply inline-flex items-center justify-center rounded-xl bg-teal-800 px-5 py-3 text-sm font-semibold text-white transition hover:bg-teal-900;
     }

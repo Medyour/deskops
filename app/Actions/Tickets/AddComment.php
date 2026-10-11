@@ -14,10 +14,7 @@ class AddComment
     /** @param array{version: int, body: string} $input */
     public function execute(User $actor, Ticket $ticket, array $input): Ticket
     {
-        $data = TicketInput::validate($input, [
-            'version' => ['required', 'integer', 'min:1'],
-            'body' => ['required', 'string', 'min:1', 'max:5000', 'regex:/[^\s\p{Z}]/u'],
-        ]);
+        $data = TicketInput::validate($input, TicketInput::commentRules());
 
         return $this->mutation->run($ticket, (int) $data['version'], function (Ticket $current) use ($actor, $data): Ticket {
             $actor->refresh();

@@ -23,11 +23,16 @@ class AssignTicket
             $assigneeId = isset($data['assigned_to']) ? (int) $data['assigned_to'] : null;
             $actor->refresh();
             Gate::forUser($actor)->authorize('assign', [$current, $assigneeId]);
-            if ($assigneeId === null && $current->status !== TicketStatus::New) {
+            if ($assigneeId === null && ! $this->allowsRelease($current)) {
                 throw ValidationException::withMessages(['assigned_to' => 'Seul un ticket nouveau peut être libéré.']);
             }
 
             return $this->mutation->save($current, ['assigned_to' => $assigneeId], $actor, TicketActivityType::AssignmentChanged);
         });
+    }
+
+    public function allowsRelease(Ticket $ticket): bool
+    {
+        return $ticket->status === TicketStatus::New;
     }
 }
