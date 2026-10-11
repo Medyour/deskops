@@ -133,4 +133,7 @@ jobs:
               run: composer run check
 
             - name: Run the complete test suite in a reproducible random order
-              run: php vendor/bin/pest --compact --order-by=random --random-order-seed=20261011
+              run: |
+                  APP_ENV=testing APP_DEMO_MODE=false BCRYPT_ROUNDS=4 CACHE_STORE=array MAIL_MAILER=array QUEUE_CONNECTION=sync SESSION_DRIVER=array DB_DATABASE=:memory: php artisan config:cache --no-interaction
+                  php artisan route:cache --no-interaction
+                  php vendor/bin/pest --compact --order-by=random --random-order-seed=20261011

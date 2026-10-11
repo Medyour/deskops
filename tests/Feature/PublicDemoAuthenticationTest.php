@@ -1,6 +1,5 @@
 <?php
 
-use App\Actions\Demo\DemoMaintenance;
 use App\Actions\Demo\ResetDemo;
 use App\Actions\Tickets\CreateTicket;
 use App\Actions\Tickets\UpdateTicket;
@@ -11,7 +10,6 @@ use Database\Seeders\DemoUserSeeder;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 
@@ -20,6 +18,31 @@ test('public demonstration is disabled by default including its POST endpoint', 
     $this->get(route('login'))->assertOk()->assertDontSee('Explorer comme')->assertSee('Mot de passe oublié');
     $this->post(route('demo.login'), ['role' => 'administrator'])->assertNotFound();
     $this->assertGuest();
+});
+
+test('disabled demo entry returns 404 before method authentication CSRF and rate checks', function (string $method, bool $authenticated) {
+    if ($authenticated) {
+        $this->actingAs(User::factory()->create());
+    }
+    $this->app->detectEnvironment(fn (): string => 'production');
+    for ($attempt = 0; $attempt < 7; $attempt++) {
+        $this->call($method, '/demo/login', ['role' => 'agent'])->assertNotFound();
+    }
+})->with(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])->with([false, true]);
+
+test('logging out a demo visitor invalidates the session and regenerates CSRF', function () {
+    config(['app.demo_mode' => true]);
+    $this->seed(DemoUserSeeder::class);
+    $this->post(route('demo.login'), ['role' => 'agent'])->assertRedirect(route('dashboard'));
+    $sessionId = session()->getId();
+    $csrf = session()->token();
+    $this->post(route('logout'))->assertRedirect('/');
+    $this->assertGuest();
+    expect(session()->getId())->not->toBe($sessionId);
+    expect(session()->token())->not->toBe($csrf);
+    expect(session()->has('demo_login'))->toBeFalse();
+    expect(session()->has('demo_generation'))->toBeFalse();
+    $this->get(route('dashboard'))->assertRedirect(route('login'));
 });
 
 test('public demo entry selects only the known account regenerates the session and ignores intended redirects', function (string $role, DemoIdentity $identity) {
@@ -52,7 +75,7 @@ test('demo entry refuses unknown roles and arbitrary parameters', function (arra
     'user id' => [['role' => 'agent', 'user_id' => 999]],
     'email' => [['role' => 'agent', 'email' => 'someone@deskops.example']],
     'redirect' => [['role' => 'agent', 'redirect' => 'https://external.invalid']],
-    'password' => [['role' => 'agent', 'password' => 'unused-fixture-value']],
+    'password' => [fn (): array => ['role' => 'agent', 'password' => generatedTestPassword()]],
 ]);
 
 test('demo entry cannot use an unmarked account or a missing demo identity', function () {
@@ -107,9 +130,10 @@ test('a demo account cannot reset its password even outside public mode', functi
     $this->seed(DemoUserSeeder::class);
     $user = User::where('demo_identity', DemoIdentity::Alex)->firstOrFail();
     $before = $user->password;
+    $password = generatedTestPassword();
     $this->post(route('password.update'), [
         'email' => $user->email, 'token' => Password::createToken($user),
-        'password' => 'FixturePassword12345', 'password_confirmation' => 'FixturePassword12345',
+        'password' => $password, 'password_confirmation' => $password,
     ])->assertSessionHasErrors('email');
     expect($user->fresh()->password)->toBe($before);
 });
@@ -127,15 +151,14 @@ test('public demo sessions expire when the mode is disabled or the data is reset
     $this->assertGuest();
 })->with([false, true]);
 
-test('public demo accounts cannot use password login but local access remains possible', function () {
-    $this->seed(DemoUserSeeder::class);
-    $user = User::where('demo_identity', DemoIdentity::Alex)->firstOrFail();
-    app(DemoMaintenance::class)->run(fn () => DB::table('users')->where('id', $user->id)->update(['password' => Hash::make('local-fixture-only')]));
+test('public demo accounts cannot use password login but existing local access remains possible', function () {
+    $password = generatedTestPassword();
+    $user = User::factory()->create(['demo_identity' => DemoIdentity::Alex, 'email' => DemoIdentity::Alex->email(), 'password' => $password]);
     config(['app.demo_mode' => true]);
-    $this->post(route('login.store'), ['email' => $user->email, 'password' => 'local-fixture-only'])->assertSessionHasErrors('email');
+    $this->post(route('login.store'), ['email' => $user->email, 'password' => $password])->assertSessionHasErrors('email');
     $this->assertGuest();
     config(['app.demo_mode' => false]);
-    $this->post(route('login.store'), ['email' => $user->email, 'password' => 'local-fixture-only'])->assertRedirect(route('dashboard'));
+    $this->post(route('login.store'), ['email' => $user->email, 'password' => $password])->assertRedirect(route('dashboard'));
     $this->assertAuthenticatedAs($user);
 });
 

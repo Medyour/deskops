@@ -5,19 +5,21 @@ use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 
 test('authentication views render', function (string $path) {
     $this->get($path)->assertOk()->assertSee('DeskOps');
 })->with(['/login', '/forgot-password', '/reset-password/test-token?email=alex%40deskops.example']);
 
 test('both roles can sign in and the session is regenerated', function (bool $administrator) {
-    $user = $administrator ? User::factory()->administrator()->create() : User::factory()->create();
+    $password = generatedTestPassword();
+    $user = $administrator ? User::factory()->administrator()->create(['password' => $password]) : User::factory()->create(['password' => $password]);
     $this->withSession(['marker' => 'preserved']);
     $sessionId = session()->getId();
 
     $this->post(route('login.store'), [
         'email' => strtoupper($user->email),
-        'password' => 'password',
+        'password' => $password,
         'role' => 'admin',
     ])->assertRedirect(route('dashboard'));
 
@@ -31,7 +33,7 @@ test('invalid credentials cannot authenticate', function () {
 
     $this->from(route('login'))->post(route('login.store'), [
         'email' => $user->email,
-        'password' => 'incorrect',
+        'password' => generatedTestPassword(),
     ])->assertRedirect(route('login'))->assertSessionHasErrors('email');
 
     $this->assertGuest();
@@ -48,13 +50,13 @@ test('the sixth login attempt is throttled for the same email and IP', function 
     for ($attempt = 0; $attempt < 5; $attempt++) {
         $this->postJson(route('login.store'), [
             'email' => $user->email,
-            'password' => 'incorrect',
+            'password' => generatedTestPassword(),
         ])->assertUnprocessable();
     }
 
     $this->postJson(route('login.store'), [
         'email' => strtoupper($user->email),
-        'password' => 'incorrect',
+        'password' => generatedTestPassword(),
     ])->assertTooManyRequests();
 });
 
@@ -78,7 +80,7 @@ test('authentication POST requests require a CSRF token outside the test bypass'
 
     $this->post(route('login.store'), [
         'email' => 'nobody@deskops.example',
-        'password' => 'incorrect',
+        'password' => generatedTestPassword(),
     ])->assertStatus(419);
 });
 
@@ -94,11 +96,12 @@ test('authenticated users are redirected away from the login page', function () 
 });
 
 test('password confirmation renders and validates the current password', function () {
-    $this->actingAs(User::factory()->create());
+    $password = generatedTestPassword();
+    $this->actingAs(User::factory()->create(['password' => $password]));
     $this->get(route('password.confirm'))->assertOk();
-    $this->post(route('password.confirm.store'), ['password' => 'incorrect'])
+    $this->post(route('password.confirm.store'), ['password' => generatedTestPassword()])
         ->assertSessionHasErrors('password');
-    $this->post(route('password.confirm.store'), ['password' => 'password'])
+    $this->post(route('password.confirm.store'), ['password' => $password])
         ->assertRedirect(route('dashboard'))->assertSessionHas('auth.password_confirmed_at');
 });
 
@@ -115,11 +118,12 @@ test('a reset notification is delivered through the Laravel broker', function ()
 test('a valid reset token changes the password and cannot be reused', function () {
     $user = User::factory()->create();
     $token = Password::createToken($user);
+    $password = generatedTestPassword();
     $payload = [
         'token' => $token,
         'email' => $user->email,
-        'password' => 'NewPassword123456',
-        'password_confirmation' => 'NewPassword123456',
+        'password' => $password,
+        'password_confirmation' => $password,
     ];
 
     $this->post(route('password.update'), $payload)
@@ -134,20 +138,28 @@ test('a valid reset token changes the password and cannot be reused', function (
 test('an invalid reset token cannot change a password', function () {
     $user = User::factory()->create();
     $hash = $user->password;
+    $password = generatedTestPassword();
 
     $this->post(route('password.update'), [
         'token' => 'invalid',
         'email' => $user->email,
-        'password' => 'NewPassword123456',
-        'password_confirmation' => 'NewPassword123456',
+        'password' => $password,
+        'password_confirmation' => $password,
     ])->assertSessionHasErrors('email');
 
     expect($user->fresh()->password)->toBe($hash);
 });
 
-test('password resets enforce the documented policy', function (string $password, string $confirmation) {
+test('password resets enforce the documented policy', function (string $violation) {
     $user = User::factory()->create();
     $hash = $user->password;
+    $password = match ($violation) {
+        'short' => substr(generatedTestPassword(), 0, 5),
+        'lowercase' => strtolower(generatedTestPassword()),
+        'without numbers' => strtoupper(Str::password(16, numbers: false, symbols: false)).strtolower(Str::password(16, numbers: false, symbols: false)),
+        default => generatedTestPassword(),
+    };
+    $confirmation = $violation === 'mismatch' ? generatedTestPassword() : $password;
 
     $this->post(route('password.update'), [
         'token' => Password::createToken($user),
@@ -157,9 +169,4 @@ test('password resets enforce the documented policy', function (string $password
     ])->assertSessionHasErrors('password');
 
     expect($user->fresh()->password)->toBe($hash);
-})->with([
-    ['Short1', 'Short1'],
-    ['lowercase123456', 'lowercase123456'],
-    ['OnlyLettersLong', 'OnlyLettersLong'],
-    ['ValidPassword123', 'DifferentPassword123'],
-]);
+})->with(['short', 'lowercase', 'without numbers', 'mismatch']);

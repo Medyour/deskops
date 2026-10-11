@@ -14,6 +14,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
 
 /** @return array<string, string> */
 function publicDemoSnapshot(): array
@@ -61,6 +62,36 @@ test('the maintenance lock prevents concurrent resets', function () {
         $lock->release();
     }
     $this->artisan('deskops:demo-reset')->assertSuccessful();
+});
+
+test('the database maintenance lock is shared with independent artisan processes', function () {
+    $restore = $this->isolateDatabase(['demo_process_lock']);
+    $path = 'storage/framework/cache/deskops-lock-process-'.bin2hex(random_bytes(8));
+    $lock = null;
+    try {
+        Artisan::call('migrate', ['--force' => true, '--no-interaction' => true]);
+        Cache::forgetDriver('database');
+        $lock = Cache::store('database')->lock(DemoMaintenance::LOCK, 300);
+        expect($lock->get())->toBeTrue();
+        $environment = $this->isolatedArtisanEnvironment($path.'-config.php', $path.'-routes.php');
+        $runReset = fn () => Process::path(base_path())->env($environment)->timeout(60)->run([PHP_BINARY, 'artisan', 'deskops:demo-reset', '--no-interaction']);
+        $result = $runReset();
+        expect($result->exitCode())->toBe(1);
+        expect($result->output())->toContain('Une opération de démonstration est déjà en cours.');
+        $this->assertDatabaseCount('users', 0);
+        $lock->release();
+        expect($runReset()->successful())->toBeTrue();
+        $before = publicDemoSnapshot();
+        expect($runReset()->successful())->toBeTrue();
+        expect(publicDemoSnapshot())->toBe($before);
+        $this->assertDatabaseCount('tickets', 12);
+        $this->assertDatabaseCount('comments', 24);
+        $this->assertDatabaseCount('ticket_activities', 60);
+    } finally {
+        $lock?->release();
+        Cache::forgetDriver('database');
+        $restore();
+    }
 });
 
 test('reset restores exact records and IDs after mutations extra comments and tickets and is idempotent', function () {
@@ -133,6 +164,54 @@ test('reset refuses to erase contributions authored by a non-demo user', functio
     expect(publicDemoSnapshot())->toBe($before);
 });
 
+test('reset refuses cross assignments to a non-demo agent without changing any record', function () {
+    config(['app.demo_mode' => true]);
+    app(ResetDemo::class)->execute();
+    $normal = User::factory()->create();
+    DB::table('tickets')->where('id', 1)->update(['assigned_to' => $normal->id]);
+    $before = publicDemoSnapshot();
+    $this->artisan('deskops:demo-reset')->assertFailed();
+    expect(publicDemoSnapshot())->toBe($before);
+    $this->assertDatabaseHas('demo_state', ['active' => false, 'generation' => 1]);
+});
+
+test('reset preserves non-demo tickets assigned to or commented on by demo accounts and revokes only demo sessions', function () {
+    config(['app.demo_mode' => true]);
+    app(ResetDemo::class)->execute();
+    $normal = User::factory()->administrator()->create();
+    $alex = User::where('demo_identity', DemoIdentity::Alex)->firstOrFail();
+    $ticket = app(CreateTicket::class)->execute($normal, ticketCoreInput());
+    config(['app.demo_mode' => false]);
+    app(AssignTicket::class)->execute($normal, $ticket, ['version' => 1, 'assigned_to' => $alex->id]);
+    app(AddComment::class)->execute($alex, $ticket->fresh(), ['version' => 2, 'body' => 'Contribution fictive sur un ticket conservé']);
+    $before = [];
+    foreach (['tickets', 'comments', 'ticket_activities'] as $table) {
+        $before[$table] = DB::table($table)->where($table === 'tickets' ? 'id' : 'ticket_id', $ticket->id)->orderBy('id')->get()->toJson();
+    }
+    foreach (User::all() as $user) {
+        DB::table('sessions')->insert(['id' => 'session-'.$user->id, 'user_id' => $user->id, 'payload' => 'fixture-session', 'last_activity' => 1]);
+    }
+    config(['app.demo_mode' => true]);
+    app(ResetDemo::class)->execute();
+    app(ResetDemo::class)->execute();
+    foreach (['tickets', 'comments', 'ticket_activities'] as $table) {
+        expect(DB::table($table)->where($table === 'tickets' ? 'id' : 'ticket_id', $ticket->id)->orderBy('id')->get()->toJson())->toBe($before[$table]);
+    }
+    $this->assertDatabaseCount('sessions', 1);
+    $this->assertDatabaseHas('sessions', ['id' => 'session-'.$normal->id, 'user_id' => $normal->id]);
+    expect(Ticket::where('is_demo', true)->count())->toBe(12);
+    expect(DB::table('comments')->whereIn('ticket_id', Ticket::where('is_demo', true)->select('id'))->count())->toBe(24);
+    expect(DB::table('ticket_activities')->whereIn('ticket_id', Ticket::where('is_demo', true)->select('id'))->count())->toBe(60);
+});
+
+test('maintenance cannot change a demo password and rolls back the attempt', function () {
+    $this->seed(DemoUserSeeder::class);
+    $before = publicDemoSnapshot();
+    expect(fn () => app(DemoMaintenance::class)->run(fn () => DB::table('users')->whereNotNull('demo_identity')->update(['password' => generatedTestPassword()])))->toThrow(QueryException::class);
+    expect(publicDemoSnapshot())->toBe($before);
+    $this->assertDatabaseHas('demo_state', ['active' => false]);
+});
+
 test('a failed restore rolls back its deletions and releases the maintenance lock without secrets', function () {
     config(['app.demo_mode' => true]);
     app(ResetDemo::class)->execute();
@@ -157,7 +236,7 @@ test('demo accounts reject protected changes and deletion including direct query
     $before = $user->getAttributes();
     $attributes = match ($field) {
         'role' => ['role' => 'admin'], 'email' => ['email' => 'changed@deskops.example'],
-        'password' => ['password' => 'ineligible-fixture-value'], 'identity' => ['demo_identity' => null],
+        'password' => ['password' => generatedTestPassword()], 'identity' => ['demo_identity' => null],
         default => [],
     };
     expect(fn () => $field === 'delete' ? $user->delete() : $user->forceFill($attributes)->save())->toThrow(QueryException::class);
@@ -187,7 +266,7 @@ test('demo ownership cannot be forged converted or mass assigned', function () {
     expect($ticket->fresh()->is_demo)->toBeFalse();
 });
 
-test('public mode cannot use the local password rotation command', function () {
+test('public mode cannot use the local preparation command', function () {
     config(['app.demo_mode' => true]);
     $this->app->detectEnvironment(fn (): string => 'local');
     $this->artisan('deskops:demo')->expectsOutput('Utilisez deskops:demo-reset en mode démonstration public. Aucun mot de passe ne sera affiché.')->assertFailed();

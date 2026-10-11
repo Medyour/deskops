@@ -98,9 +98,13 @@ class ResetDemo
     private function assertOwnership(array $snapshot): void
     {
         $demoUsers = User::query()->whereNotNull('demo_identity')->pluck('id')->all();
+        if (DB::table('tickets')->where('is_demo', true)->whereNotNull('assigned_to')->whereNotIn('assigned_to', $demoUsers)->exists()) {
+            throw new LogicException('Un ticket démo est assigné à un compte non-démo. La réinitialisation est refusée.');
+        }
         $fixtureTickets = array_column($snapshot['tickets'], 'id');
         foreach ($snapshot['tickets'] as $record) {
             if (! $record['is_demo'] || ! in_array($record['created_by'], $demoUsers, true)
+                || ($record['assigned_to'] !== null && ! in_array($record['assigned_to'], $demoUsers, true))
                 || DB::table('tickets')->where('id', $record['id'])->where('is_demo', false)->exists()) {
                 throw new LogicException('La fixture ne peut pas remplacer un ticket non-démo.');
             }

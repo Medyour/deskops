@@ -38,7 +38,7 @@ php artisan deskops:demo
 
 `setup` installe les dépendances verrouillées, crée `.env` s’il manque, génère la clé applicative seulement si elle manque, crée le fichier SQLite, applique les migrations puis construit les assets. Il ne supprime aucune base et ne renouvelle aucune clé existante.
 
-`deskops:demo` crée/met à jour les trois identités de démonstration, initialise **12 tickets, 24 commentaires et 60 activités** sur une base de tickets neuve, affiche de nouveaux mots de passe aléatoires et révoque leurs anciennes sessions/liens de récupération. Relancer cette commande renouvelle les accès et conserve les mutations de tickets, les ajouts et l’historique. Les mots de passe ne sont pas enregistrés en clair dans un fichier et ne sont pas fournis dans le dépôt.
+`deskops:demo` prépare les trois identités et initialise **12 tickets, 24 commentaires et 60 activités** sur une base de tickets neuve. Les mots de passe sont générés en mémoire à la création, puis leurs hashes sont conservés. Aucun accès n’est affiché, enregistré en clair ou renouvelé par cette commande. Elle révoque uniquement les sessions et liens de récupération démo ; les mutations de tickets et les ajouts sont conservés.
 
 | Compte                  | Rôle           |
 | ----------------------- | -------------- |
@@ -46,9 +46,9 @@ php artisan deskops:demo
 | `alex@deskops.example`  | Agent          |
 | `sam@deskops.example`   | Agent          |
 
-`php artisan db:seed` est idempotent et conserve les mots de passe existants ; pour obtenir des identifiants utilisables, lancer la commande de démonstration. Ces données n’utilisent aucune identité réelle. Le seed est réservé à local/testing ; la commande est réservée à local.
+`php artisan db:seed` est idempotent et conserve les hashes existants. Pour explorer les rôles sans publier d’accès, utiliser le mode démonstration explicite sur une base locale dédiée (voir ci-dessous). Les données sont fictives ; le seed est réservé à local/testing et la préparation locale à local.
 
-Si des tickets étrangers à la fixture existent, si la fixture est partielle ou si ses identifiants ont déjà été utilisés, le seed refuse l’initialisation sans écraser de données. La commande n’effectue alors aucune rotation des accès. Aucun reset automatique n’est prévu. Les dates métier sont fixes au 15 janvier 2026 en UTC ; elles ne sont pas recalées sur la date du jour.
+Si des tickets étrangers à la fixture existent, si la fixture est partielle ou si ses identifiants ont déjà été utilisés, le seed refuse l’initialisation sans écraser de données. Aucun reset automatique n’est prévu. Les dates métier restent fixes au 15 janvier 2026 en UTC.
 
 ### Contrat des mutations
 
@@ -150,7 +150,7 @@ DB_CONNECTION=pgsql APP_ENV=testing composer run check
 DB_CONNECTION=pgsql APP_ENV=testing php vendor/bin/pest --compact --order-by=random --random-order-seed=20261011
 ```
 
-En PowerShell, définir les mêmes variables avec `$env:DB_CONNECTION = 'pgsql'` et `$env:APP_ENV = 'testing'`, puis exécuter les commandes sans leurs préfixes POSIX. La suite vérifie aussi l’installation vide, les rollbacks sans triggers/fonctions résiduels et deux appels à `deskops:demo` en environnement local simulé, sans exposer les accès générés.
+En PowerShell, définir les mêmes variables avec `$env:DB_CONNECTION = 'pgsql'` et `$env:APP_ENV = 'testing'`, puis exécuter les commandes sans leurs préfixes POSIX. La suite vérifie aussi l’installation vide, les rollbacks sans triggers/fonctions résiduels et deux appels à `deskops:demo` en environnement local simulé, sans afficher ni renouveler les accès.
 
 Sur la machine ayant préparé cette compatibilité, les deux pilotes PHP sont disponibles mais aucun serveur PostgreSQL ni Docker ne l’est. Aucun service système n’a été installé : la validation PostgreSQL réelle est assurée par le service éphémère de la CI. SQLite reste immédiatement utilisable localement.
 
@@ -170,17 +170,19 @@ php artisan deskops:demo-reset --no-interaction
 php artisan deskops:demo-reset --force --no-interaction
 ```
 
-Les boutons de connexion « Explorer comme administrateur » et « Explorer comme agent » utilisent uniquement POST, les protections CSRF Laravel et une limite commune de cinq tentatives par minute et par IP. Le serveur choisit une identité démo fermée ; aucun identifiant, e-mail, mot de passe ou URL de retour ne peut être fourni. La session et son token CSRF sont renouvelés, les anciennes données de session et la redirection prévue sont supprimées. Une base non initialisée renvoie une indisponibilité explicite, sans accès de secours.
+Les boutons de connexion « Explorer comme administrateur » et « Explorer comme agent » utilisent uniquement POST, les protections CSRF Laravel et une limite commune de cinq tentatives par minute et par IP. Le serveur choisit une identité démo fermée ; aucun identifiant, e-mail, mot de passe ou URL de retour ne peut être fourni. La session et son token CSRF sont renouvelés, les anciennes données de session et la redirection prévue sont supprimées. Hors mode démo, un middleware global renvoie 404 avant les contrôles de méthode, de session, de CSRF et de fréquence. Une base non initialisée renvoie une indisponibilité explicite, sans accès de secours.
 
-`users.demo_identity` est un marqueur unique et protégé, indépendant de l’adresse e-mail. Les créations du serveur portent `tickets.is_demo`, dérivé du créateur et non assignable par formulaire. Le visiteur démo est limité aux tickets, agents et activités démo, y compris via URL directe et mutation. Rôle, adresse, mot de passe et suppression des comptes démo sont protégés dans les deux moteurs. Le reset ne renouvelle pas les mots de passe et n’affiche aucun accès. Les parcours de récupération/confirmation sont bloqués en mode public ; hors de ce mode, les comptes ordinaires gardent leur récupération et les comptes démo utilisent la préparation locale explicite.
+`users.demo_identity` est un marqueur unique et protégé, indépendant de l’adresse e-mail. Les créations du serveur portent `tickets.is_demo`, dérivé du créateur et non assignable par formulaire. Le visiteur démo est limité aux tickets, agents et activités démo, y compris via URL directe et mutation. Rôle, adresse, mot de passe et suppression des comptes démo sont protégés dans les deux moteurs. Le reset ne renouvelle pas les mots de passe et n’affiche aucun accès. Les parcours de récupération/confirmation sont bloqués en mode public ; hors de ce mode, les comptes ordinaires gardent leur récupération et les comptes démo conservent leurs accès existants, sans récupération ni modification.
 
 Le reset prend un verrou partagé en base et effectue toutes les opérations dans une transaction. `demo_state` conserve une copie immuable des 12 tickets, 24 commentaires et 60 activités initiaux, sans compte, hash ni secret. Il supprime les ajouts démo, restaure les lignes et leurs identifiants exacts, puis révoque les sessions démo. Un compteur de génération invalide aussi les sessions publiques quel que soit leur pilote ; les mutations le revérifient sous verrou. Les séquences globales ne sont jamais remises à zéro.
 
-L’exception de suppression des historiques est limitée à cette transaction de maintenance, aux tickets marqués démo et aux contributions d’identités démo. Les autres historiques restent immuables, même pendant la maintenance ; UPDATE, remplacement et TRUNCATE restent interdits. Une contribution non-démo sur un ticket démo fait refuser tout le reset. Les utilisateurs, tickets, sessions et liens de récupération non-démo restent inchangés. Les collisions avec les adresses réservées sont refusées : la migration ne transforme jamais automatiquement des comptes ou tickets existants en données démo.
+L’exception de suppression des historiques est limitée à cette transaction de maintenance, aux tickets marqués démo et aux contributions d’identités démo. Les autres historiques restent immuables, même pendant la maintenance ; UPDATE, remplacement et TRUNCATE restent interdits. Une contribution ou assignation non-démo sur un ticket démo fait refuser tout le reset. Les tickets non-démo restent intacts même lorsque des comptes démo y participent. Les utilisateurs, tickets, sessions et liens de récupération non-démo restent inchangés. Les collisions avec les adresses réservées sont refusées : la migration ne transforme jamais automatiquement des comptes ou tickets existants en données démo.
+
+La valeur du mode est lue exclusivement via `config('app.demo_mode')`. Après modification des variables runtime, reconstruire les caches avec `php artisan config:cache --no-interaction` et `php artisan route:cache --no-interaction`. Les tests vérifient les deux modes avec des caches compilés ; la CI exécute aussi la suite aléatoire après compilation.
 
 Sur une base neuve, les références restent `DS-0001` à `DS-0012`. Sur une base mixte, les séquences existantes sont respectées ; les références initialement attribuées à la fixture sont ensuite conservées lors des resets. Le contenu et les indicateurs déterministes sont identiques. Une ancienne base sans marqueurs reste hors de la démonstration publique ; utiliser une nouvelle base jetable pour ce parcours plutôt que convertir ou effacer des données existantes.
 
-En local, conserver `APP_DEMO_MODE=false` pour utiliser `deskops:demo` et ses accès affichés uniquement dans le terminal. En mode public, cette ancienne commande refuse toute rotation ou sortie de mot de passe. Le bandeau rappelle que les données sont fictives, partagées et régulièrement réinitialisées, et demande de ne saisir aucune information personnelle. La fréquence effective de reset sera une décision d’exploitation ultérieure : aucun App Spec, job DigitalOcean ou planning automatique n’est créé ici.
+En local, la préparation conserve les accès existants sans les afficher. Pour explorer une nouvelle base, activer explicitement le mode démo et utiliser les boutons. Aucun mot de passe n’est modifiable pour un compte démo, même pendant la maintenance. Le bandeau rappelle que les données sont fictives, partagées et régulièrement réinitialisées. Aucun App Spec, job DigitalOcean ou planning automatique n’est créé ici.
 
 ## Qualité et CI GitHub Actions
 
@@ -192,7 +194,7 @@ composer run check
 
 Cette commande exécute, dans l’ordre : validation stricte de Composer, vérification des exigences de la plateforme, audit Composer (y compris les dépendances de développement), Pint en vérification, suite Laravel, audit npm, Prettier en vérification, le script de tests JavaScript s’il est défini, puis le build Vite. Elle s’arrête si un contrôle échoue. Aucun audit ou test présent n’est rendu facultatif.
 
-Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) conserve l’installation `composer run setup` sur une base SQLite neuve et ajoute une seconde exécution sur PostgreSQL 18. Les deux exécutent exactement `composer run check`, puis toute la suite dans un ordre aléatoire reproductible. Il tourne sous Ubuntu 24.04 et PHP 8.3, vérifie `pdo_pgsql`/`pdo_sqlite`/`sqlite3` et les versions Composer, Node et npm, puis installe les dépendances depuis les deux lockfiles. Il se déclenche sur les pushes vers `main` et `agent/**`, sur les PR vers `main` (brouillons compris), et manuellement.
+Le workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) conserve l’installation `composer run setup` sur une base SQLite neuve et ajoute une seconde exécution sur PostgreSQL 18. Les deux exécutent exactement `composer run check`, puis toute la suite dans un ordre aléatoire reproductible après compilation de la configuration et des routes. Il tourne sous Ubuntu 24.04 et PHP 8.3, vérifie `pdo_pgsql`/`pdo_sqlite`/`sqlite3` et les versions Composer, Node et npm, puis installe les dépendances depuis les deux lockfiles. Il se déclenche sur les pushes vers `main` et `agent/**`, sur les PR vers `main` (brouillons compris), et manuellement.
 
 PostgreSQL utilise l’image officielle `postgres:18`, épinglée par digest, sans volume persistant ni base externe. Un contrôle de santé TCP attend sa disponibilité ; une requête vérifie ensuite la version majeure 18 avant les migrations depuis une base vide. L’authentification `trust` sans mot de passe et `sslmode=disable` concernent exclusivement ce service jetable, dont le port est publié sur la boucle locale du runner. L’application respecte ce paramètre explicite de l’URL sans imposer un autre mode TLS. Les deux contrôles sont bloquants et indépendants.
 
@@ -252,7 +254,7 @@ La même suite Feature s’exécute sur les deux moteurs, sans modifier la base 
 4. **Parcours des tickets — livré** : liste, détail, création, édition des champs/priorités, commentaires et chronologie ; messages français de validation et de conflit ; recherche, filtres persistants et pagination ; parcours responsive sans JavaScript.
 5. **Pilotage — livré** : indicateurs testés, répartitions, charge active, file priorisée, créations et activités récentes, liens filtrés et vue personnelle en Blade.
 6. **Compatibilité PostgreSQL 18 — livré** : migrations, protections d’intégrité et suite complète sur deux moteurs, SQLite conservé localement.
-7. **Mode démonstration public — préparé** : exploration des deux rôles sans accès publié, comptes protégés, sessions révocables et reset atomique des fixtures explicitement identifiées.
+7. **Mode démonstration public — livré** : exploration des deux rôles sans accès publié, comptes protégés, sessions révocables et reset atomique des fixtures explicitement identifiées.
 8. **Finition de la vitrine** : présentation du portfolio et documentation finale ; les choix d’exploitation restent une étape distincte.
 
 Le dépôt GitHub est privé : [`Medyour/deskops`](https://github.com/Medyour/deskops). La CI ne publie aucun site ni artefact de déploiement. Aucun hébergement ou domaine n’est configuré. Le contrat détaillé du MVP fait foi pour les prochaines étapes métier.

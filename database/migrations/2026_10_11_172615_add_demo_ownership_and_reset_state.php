@@ -72,7 +72,7 @@ return new class extends Migration
             CREATE TRIGGER users_demo_update BEFORE UPDATE ON users
             WHEN NEW.demo_identity IS NOT OLD.demo_identity OR
                 (OLD.demo_identity IS NOT NULL AND (NEW.role <> OLD.role OR NEW.email <> OLD.email
-                OR (NEW.password <> OLD.password AND NOT EXISTS (SELECT 1 FROM demo_state WHERE id = 1 AND active = 1))))
+                OR NEW.password <> OLD.password))
             BEGIN SELECT RAISE(ABORT, 'Demo account identity and credentials are protected'); END;
             CREATE TRIGGER users_demo_delete BEFORE DELETE ON users WHEN OLD.demo_identity IS NOT NULL
             BEGIN SELECT RAISE(ABORT, 'Demo accounts cannot be deleted'); END;
@@ -115,7 +115,7 @@ return new class extends Migration
                 ELSE
                     IF NEW.demo_identity IS DISTINCT FROM OLD.demo_identity OR
                         (OLD.demo_identity IS NOT NULL AND (NEW.role <> OLD.role OR NEW.email <> OLD.email
-                        OR (NEW.password <> OLD.password AND NOT EXISTS (SELECT 1 FROM demo_state WHERE id = 1 AND active)))) THEN
+                        OR NEW.password <> OLD.password)) THEN
                         RAISE EXCEPTION 'Demo account identity and credentials are protected' USING ERRCODE = '23514';
                     END IF;
                 END IF;
