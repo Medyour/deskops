@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Actions\Demo\DemoMaintenance;
 use App\Models\User;
 use Database\Seeders\DemoTicketSeeder;
 use Database\Seeders\DemoUserSeeder;
@@ -25,7 +26,12 @@ class PrepareDemoAccounts extends Command
         }
 
         try {
-            $credentials = DB::transaction(function (): array {
+            if (config('app.demo_mode')) {
+                $this->error('Utilisez deskops:demo-reset en mode démonstration public. Aucun mot de passe ne sera affiché.');
+
+                return self::FAILURE;
+            }
+            $credentials = app(DemoMaintenance::class)->run(function (): array {
                 app(DemoUserSeeder::class)->run();
                 app(DemoTicketSeeder::class)->run();
                 $credentials = [];

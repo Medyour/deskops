@@ -8,6 +8,7 @@ use App\Enums\TicketStatus;
 use App\Enums\UserRole;
 use App\Models\Ticket;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Validation\Rule;
 
 class IndexTicketsRequest extends TicketFormRequest
@@ -27,7 +28,7 @@ class IndexTicketsRequest extends TicketFormRequest
             'status' => ['nullable', Rule::enum(TicketStatus::class)],
             'priority' => ['nullable', Rule::enum(TicketPriority::class)],
             'queue' => ['nullable', Rule::enum(TicketQueue::class)],
-            'assignee' => ['nullable', Rule::in(['me', 'unassigned', ...User::query()->where('role', UserRole::Agent)->pluck('id')->map(fn (int $id): string => (string) $id)->all()])],
+            'assignee' => ['nullable', Rule::in(['me', 'unassigned', ...User::query()->where('role', UserRole::Agent)->when($this->user()->demoRestricted(), fn (Builder $query): Builder => $query->whereNotNull('demo_identity'))->pluck('id')->map(fn (int $id): string => (string) $id)->all()])],
             'page' => ['nullable', 'integer', 'min:1'],
         ];
     }

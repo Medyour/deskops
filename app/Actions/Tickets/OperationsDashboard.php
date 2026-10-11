@@ -27,7 +27,7 @@ class OperationsDashboard
     {
         $now = CarbonImmutable::now('UTC');
         $mine = $mine && ! $viewer->isAdministrator();
-        $tickets = Ticket::query()->when($mine, fn (Builder $query): Builder => $query->where('assigned_to', $viewer->id));
+        $tickets = Ticket::query()->visibleTo($viewer)->when($mine, fn (Builder $query): Builder => $query->where('assigned_to', $viewer->id));
         $statuses = array_fill_keys(array_column(TicketStatus::cases(), 'value'), 0);
         $priorities = array_fill_keys(array_column(TicketPriority::cases(), 'value'), 0);
         $metrics = ['total' => 0, 'active' => 0, 'unassigned' => 0, 'high_priority' => 0, 'urgent' => 0, 'attention' => 0, 'completed' => 0];
@@ -52,15 +52,15 @@ class OperationsDashboard
             }
         }
 
-        $agents = User::query()->where('role', UserRole::Agent)->when($mine, fn (Builder $query): Builder => $query->whereKey($viewer->id))
-            ->select(['id', 'name'])->withCount(['assignedTickets as active_tickets_count' => fn (Builder $query): Builder => $query->inQueue(TicketQueue::Active)])
+        $agents = User::query()->where('role', UserRole::Agent)->when($viewer->demoRestricted(), fn (Builder $query): Builder => $query->whereNotNull('demo_identity'))->when($mine, fn (Builder $query): Builder => $query->whereKey($viewer->id))
+            ->select(['id', 'name'])->withCount(['assignedTickets as active_tickets_count' => fn (Builder $query): Builder => $query->visibleTo($viewer)->inQueue(TicketQueue::Active)])
             ->orderByDesc('active_tickets_count')->orderBy('name')->orderBy('id')->get();
         $attention = (clone $tickets)->inQueue(TicketQueue::Attention)->with('assignee:id,name')
             ->orderByRaw('CASE priority WHEN ? THEN 0 WHEN ? THEN 1 WHEN ? THEN 2 ELSE 3 END', [TicketPriority::Urgent->value, TicketPriority::High->value, TicketPriority::Normal->value])
             ->orderBy('created_at')->orderBy('id')->limit(5)->get(['id', 'title', 'status', 'priority', 'assigned_to', 'created_at']);
         $recentTickets = (clone $tickets)->with('assignee:id,name')->orderByDesc('created_at')->orderByDesc('id')
             ->limit(5)->get(['id', 'title', 'status', 'priority', 'assigned_to', 'created_at']);
-        $recentActivities = TicketActivity::query()->when($mine, fn (Builder $query): Builder => $query->whereHas('ticket', fn (Builder $ticket): Builder => $ticket->where('assigned_to', $viewer->id)))
+        $recentActivities = TicketActivity::query()->whereHas('ticket', fn (Builder $ticket): Builder => $ticket->visibleTo($viewer))->when($mine, fn (Builder $query): Builder => $query->whereHas('ticket', fn (Builder $ticket): Builder => $ticket->where('assigned_to', $viewer->id)))
             ->with(['ticket:id,title', 'actor:id,name'])->orderByDesc('created_at')->orderByDesc('id')->limit(5)
             ->get(['id', 'ticket_id', 'actor_id', 'type', 'created_at']);
 

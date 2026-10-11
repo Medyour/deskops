@@ -26,7 +26,7 @@ test('a fresh installation supports the demo and cleans all triggers and functio
         $this->assertDatabaseCount('comments', 24, 'ticket_migrations');
         $this->assertDatabaseCount('ticket_activities', 60, 'ticket_migrations');
 
-        expect(Artisan::call('migrate:rollback', ['--database' => 'ticket_migrations', '--step' => 3, '--no-interaction' => true]))->toBe(0);
+        expect(Artisan::call('migrate:rollback', ['--database' => 'ticket_migrations', '--step' => 4, '--no-interaction' => true]))->toBe(0);
         foreach (['tickets', 'comments', 'ticket_activities'] as $table) {
             expect(Schema::connection('ticket_migrations')->hasTable($table))->toBeFalse();
         }

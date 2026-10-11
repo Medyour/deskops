@@ -1,11 +1,14 @@
 <?php
 
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DemoLoginController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\TicketMutationController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
+
+Route::post('/demo/login', DemoLoginController::class)->middleware(['guest', 'throttle:public-demo'])->name('demo.login');
 
 Route::middleware('auth')->group(function (): void {
     Route::get('/tickets', [TicketController::class, 'index'])->name('tickets.index');

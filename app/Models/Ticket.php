@@ -23,7 +23,16 @@ class Ticket extends Model
     /** @return array<string, string> */
     protected function casts(): array
     {
-        return ['status' => TicketStatus::class, 'priority' => TicketPriority::class, 'version' => 'integer', 'resolved_at' => 'immutable_datetime', 'closed_at' => 'immutable_datetime', 'last_activity_at' => 'immutable_datetime'];
+        return ['status' => TicketStatus::class, 'priority' => TicketPriority::class, 'version' => 'integer', 'is_demo' => 'boolean', 'resolved_at' => 'immutable_datetime', 'closed_at' => 'immutable_datetime', 'last_activity_at' => 'immutable_datetime'];
+    }
+
+    /**
+     * @param  Builder<Ticket>  $query
+     * @return Builder<Ticket>
+     */
+    public function scopeVisibleTo(Builder $query, User $viewer): Builder
+    {
+        return $query->when($viewer->demoRestricted(), fn (Builder $tickets): Builder => $tickets->where('is_demo', true));
     }
 
     /**

@@ -34,12 +34,17 @@
             </div>
         </nav>
     </header>
+    @if(config('app.demo_mode'))
+        <aside aria-label="Mode démonstration" class="border-b border-amber-200 bg-amber-50">
+            <p class="mx-auto max-w-6xl px-6 py-4 text-sm leading-relaxed text-amber-950"><strong>Démonstration publique.</strong> Les données sont fictives, partagées entre les visiteurs et régulièrement réinitialisées. N’ajoutez aucune information personnelle ou confidentielle.</p>
+        </aside>
+    @endif
     <main id="main" tabindex="-1" class="mx-auto max-w-6xl px-6 py-12 sm:py-16">
         {{ $slot }}
     </main>
     <footer class="mx-auto flex max-w-6xl flex-wrap justify-between gap-3 border-t border-stone-200 px-6 py-6 text-xs text-slate-500">
         <span>DeskOps · Le support, avec méthode.</span>
-        <span>Démonstration locale · Espace support</span>
+        <span>{{ config('app.demo_mode') ? 'Démonstration publique · Données fictives' : 'Espace support' }}</span>
     </footer>
 </body>
 </html>

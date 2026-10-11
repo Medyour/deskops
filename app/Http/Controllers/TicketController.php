@@ -14,11 +14,11 @@ class TicketController extends Controller
     public function index(IndexTicketsRequest $request, TicketWorkspace $workspace): View
     {
         $filters = $request->safe()->except('page');
-        $tickets = Ticket::query()->filtered($filters, $request->user()->id)
+        $tickets = Ticket::query()->visibleTo($request->user())->filtered($filters, $request->user()->id)
             ->with('assignee:id,name')->withMax('activities as last_activity_at', 'created_at')
             ->orderByDesc('created_at')->orderByDesc('id')->paginate(20)->appends($filters);
 
-        return view('tickets.index', ['tickets' => $tickets, 'filters' => $filters, 'agents' => $workspace->agents()]);
+        return view('tickets.index', ['tickets' => $tickets, 'filters' => $filters, 'agents' => $workspace->agents($request->user())]);
     }
 
     public function create(): View
