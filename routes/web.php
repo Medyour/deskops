@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TicketController;
 use App\Http\Controllers\TicketMutationController;
 use Illuminate\Support\Facades\Route;
@@ -16,7 +17,7 @@ Route::middleware('auth')->group(function (): void {
     Route::post('/tickets/{ticket}/comments', [TicketMutationController::class, 'comment'])->name('tickets.comment');
     Route::patch('/tickets/{ticket}/assignment', [TicketMutationController::class, 'assign'])->name('tickets.assign');
     Route::patch('/tickets/{ticket}/status', [TicketMutationController::class, 'changeStatus'])->name('tickets.change-status');
-    Route::view('/dashboard', 'dashboard')->name('dashboard');
+    Route::get('/dashboard', DashboardController::class)->name('dashboard');
     Route::view('/admin', 'admin')
         ->middleware('can:access-administration')
         ->name('admin');

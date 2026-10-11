@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Enums\TicketPriority;
+use App\Enums\TicketQueue;
 use App\Enums\TicketStatus;
 use App\Enums\UserRole;
 use App\Models\Ticket;
@@ -25,6 +26,7 @@ class IndexTicketsRequest extends TicketFormRequest
             'q' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', Rule::enum(TicketStatus::class)],
             'priority' => ['nullable', Rule::enum(TicketPriority::class)],
+            'queue' => ['nullable', Rule::enum(TicketQueue::class)],
             'assignee' => ['nullable', Rule::in(['me', 'unassigned', ...User::query()->where('role', UserRole::Agent)->pluck('id')->map(fn (int $id): string => (string) $id)->all()])],
             'page' => ['nullable', 'integer', 'min:1'],
         ];

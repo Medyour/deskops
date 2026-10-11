@@ -13,14 +13,14 @@
     <a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-white focus:p-4">Aller au contenu</a>
     <header class="border-b border-stone-200 bg-white">
         <nav aria-label="Navigation principale" class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6 py-5">
-            <a href="{{ route('home') }}" class="flex items-center gap-3 font-bold tracking-tight">
+            <a href="{{ auth()->check() ? route('dashboard') : route('home') }}" class="flex items-center gap-3 font-bold tracking-tight">
                 <span aria-hidden="true" class="flex h-9 w-9 items-center justify-center rounded-lg bg-teal-800 text-sm text-white">D</span>
                 <span class="text-xl">DeskOps<span class="text-teal-700">.</span></span>
             </a>
             <div class="flex flex-wrap items-center gap-4 text-sm">
                 @auth
-                    <a href="{{ route('tickets.index') }}" @if(request()->routeIs('tickets.*')) aria-current="page" @endif class="font-medium hover:text-teal-800">Tickets</a>
-                    <a href="{{ route('dashboard') }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif class="font-medium hover:text-teal-800">Mon espace</a>
+                    <a href="{{ route('dashboard') }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif @class(['font-medium hover:text-teal-800', 'text-teal-800 underline underline-offset-4' => request()->routeIs('dashboard')])>Tableau de bord</a>
+                    <a href="{{ route('tickets.index') }}" @if(request()->routeIs('tickets.*')) aria-current="page" @endif @class(['font-medium hover:text-teal-800', 'text-teal-800 underline underline-offset-4' => request()->routeIs('tickets.*')])>Tickets</a>
                     @can('access-administration')
                         <a href="{{ route('admin') }}" @if(request()->routeIs('admin')) aria-current="page" @endif class="font-medium hover:text-teal-800">Administration</a>
                     @endcan

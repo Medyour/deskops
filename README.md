@@ -4,11 +4,13 @@
 
 DeskOps est un mini-centre de support client pour une petite équipe. Ce projet vitrine démontrera des accès par rôle, un workflow de tickets, des règles métier testées, une chronologie d’activité et un tableau de bord.
 
-## État actuel — fondations, CI et espace tickets
+## État actuel — espace tickets et tableau de bord
 
 Les fondations sont prêtes : vitrine responsive, connexion/déconnexion, « se souvenir de moi », récupération et confirmation du mot de passe, rôles **administrateur** et **agent**, espaces protégés et comptes de démonstration locaux.
 
-L’espace tickets est disponible : liste paginée, recherche et filtres combinables dans l’URL, création, détail, édition des informations et de la priorité, assignation/réassignation, transitions autorisées, commentaires internes et historique immuable. Les formulaires réutilisent les actions et policies du cœur métier. Un conflit 409 conserve la saisie à l’écran, présente les valeurs actuelles et demande une reprise explicite. Les indicateurs statistiques restent à construire. Aucune inscription publique.
+L’espace tickets est disponible : liste paginée, recherche et filtres combinables dans l’URL, création, détail, édition des informations et de la priorité, assignation/réassignation, transitions autorisées, commentaires internes et historique immuable. Les formulaires réutilisent les actions et policies du cœur métier. Un conflit 409 conserve la saisie à l’écran, présente les valeurs actuelles et demande une reprise explicite. Aucune inscription publique.
+
+Le tableau de bord authentifié présente les volumes, répartitions par statut/priorité, charge active des agents, file À traiter et cinq tickets/activités récents. Les agents peuvent basculer entre Équipe et Mes tickets. Blade et Tailwind suffisent ; aucun graphique externe ni JavaScript métier n’est ajouté.
 
 Le contrat complet se trouve dans [docs/MVP.md](docs/MVP.md), les choix de structure dans [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
@@ -53,6 +55,20 @@ Si des tickets étrangers à la fixture existent, si la fixture est partielle ou
 Les actions de `app/Actions/Tickets` centralisent validation, autorisation, transaction et activité. La référence `DS-0001` dérive de la clé primaire SQLite et reste unique au-delà de quatre chiffres. Les mutations transmettent la version observée du ticket ; une version obsolète ou un verrou SQLite entraîne un conflit HTTP 409, sans écriture partielle. Les répétitions autorisées à jour sont sans effet.
 
 Les pages protégées sont `GET /tickets`, `/tickets/create`, `/tickets/{ticket}` et `/tickets/{ticket}/edit`. Les cinq mutations sous session/CSRF couvrent création, édition, assignation, statut et commentaire. Les contrôleurs délèguent aux actions et redirigent vers le détail. L’édition ajoute une activité par catégorie modifiée et n’incrémente la version qu’une fois. Le graphe, les motifs obligatoires et les permissions détaillées sont définis dans [le contrat du MVP](docs/MVP.md).
+
+### Tableau de bord opérationnel
+
+`GET /dashboard` est l’accueil après connexion. Les deux rôles voient la charge globale ; `?scope=mine` limite tous les résultats aux tickets actuellement assignés à l’agent connecté, activités comprises.
+
+- **Actifs** : Nouveau, En cours ou En attente du client ; les tickets Résolu/Fermé sont exclus.
+- **Non assignés** : actifs sans agent ; **priorités élevées** : actifs de priorité Haute ou Urgente ; **urgents actifs** : priorité Urgente uniquement.
+- **À traiter** : union des actifs non assignés et des actifs de priorité Haute/Urgente, sans double comptage. Aperçu de cinq tickets : priorité décroissante, création la plus ancienne, identifiant croissant.
+- **Terminés** : tous les tickets actuellement au statut Résolu ou Fermé, quelle que soit leur date de résolution.
+- Les répartitions couvrent tous les statuts du périmètre. La charge par agent compte uniquement ses tickets actifs. Les créations et activités récentes sont triées par date puis identifiant décroissants et limitées à cinq.
+
+Les liens ouvrent la liste avec les filtres correspondants (`queue`, statut, priorité, assignation), conservés dans la pagination et combinables avec la recherche. Les répartitions restent textuelles, les états vides explicites. Aucun SLA, échéance, durée moyenne ou classement de performance n’est calculé.
+
+Avec la fixture intacte : **12 tickets, 9 actifs, 3 non assignés actifs, 3 priorités élevées actives, 1 urgent actif, 3 terminés, 5 dans la file À traiter** ; charge active Alex **3**, Sam **3**. Ces valeurs ne dépendent pas de la date de consultation ; les dates historiques de la démo restent fixes. Les définitions et résultats détaillés sont dans [docs/MVP.md](docs/MVP.md).
 
 ### Ouvrir l’application
 
@@ -141,6 +157,9 @@ Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; l
 | `app/Enums/TicketStatus.php`, `TicketPriority.php`           | Statuts, graphe et priorités typés                           |
 | `app/Actions/Tickets`                                        | Mutations transactionnelles et contrôle de version           |
 | `app/Policies/TicketPolicy.php`, `app/Http/Requests`         | Autorisations et validation Laravel                          |
+| `app/Actions/Tickets/OperationsDashboard.php`                | Agrégations et files du tableau de bord                      |
+| `app/Enums/TicketQueue.php`, `Ticket::inQueue`               | Prédicats partagés des vues opérationnelles                  |
+| `app/Http/Controllers/DashboardController.php`               | Accueil authentifié et périmètre validé                      |
 | `database/seeders/DemoUserSeeder.php`                        | Identités déterministes                                      |
 | `database/seeders/DemoTicketSeeder.php`                      | Fixture déterministe, sans écrasement                        |
 | `app/Console/Commands/PrepareDemoAccounts.php`               | Préparation des accès locaux                                 |
@@ -156,7 +175,7 @@ Les tests Feature utilisent SQLite en mémoire, sans modifier la base locale ; l
 2. **Dépôt privé et CI — livré** : publication sur `Medyour/deskops`, installation reproductible, audits bloquants et contrôles GitHub Actions.
 3. **Cœur métier des tickets — livré** : migrations, enums, policy, validations, assignation, transitions, historique immuable, commentaires internes et fixture de 12 tickets ; tests des refus et de la concurrence.
 4. **Parcours des tickets — livré** : liste, détail, création, édition des champs/priorités, commentaires et chronologie ; messages français de validation et de conflit ; recherche, filtres persistants et pagination ; parcours responsive sans JavaScript.
-5. **Pilotage** : indicateurs à horloge testable et éventuel îlot Vue justifié.
+5. **Pilotage — livré** : indicateurs testés, répartitions, charge active, file priorisée, créations et activités récentes, liens filtrés et vue personnelle en Blade.
 6. **Finition de la vitrine** : parcours de démonstration, vérifications clavier/mobile et documentation finale.
 
 Le dépôt GitHub est privé : [`Medyour/deskops`](https://github.com/Medyour/deskops). La CI ne publie aucun site ni artefact de déploiement. Aucun hébergement ou domaine n’est configuré. Le contrat détaillé du MVP fait foi pour les prochaines étapes métier.

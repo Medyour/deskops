@@ -47,6 +47,18 @@
             </div>
         </div>
         <div class="mt-5 flex flex-wrap items-center gap-4">
+            <div class="w-full max-w-xl">
+                <label for="queue-filter" class="block text-sm font-semibold">Vue opérationnelle</label>
+                <select id="queue-filter" name="queue" class="field" @if($errors->has('queue')) aria-invalid="true" aria-describedby="queue-error" @endif>
+                    <option value="">Toutes les demandes</option>
+                    @foreach(\App\Enums\TicketQueue::cases() as $queue)
+                        <option value="{{ $queue->value }}" @selected(old('queue', $filters['queue'] ?? '') === $queue->value)>{{ $queue->label() }}</option>
+                    @endforeach
+                </select>
+                @error('queue')<p id="queue-error" class="mt-2 text-sm text-red-800">{{ $message }}</p>@enderror
+            </div>
+        </div>
+        <div class="mt-5 flex flex-wrap items-center gap-4">
             <button class="button">Appliquer les filtres</button>
             <a href="{{ route('tickets.index') }}" class="text-sm font-semibold text-slate-600 underline decoration-stone-300 underline-offset-4 hover:text-teal-800">Réinitialiser</a>
         </div>
