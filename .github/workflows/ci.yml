@@ -167,7 +167,7 @@ jobs:
                   cd "$validator"
                   curl -fsSLO https://github.com/digitalocean/doctl/releases/download/v1.185.0/doctl-1.185.0-linux-amd64.tar.gz
                   curl -fsSLO https://github.com/digitalocean/doctl/releases/download/v1.185.0/doctl-1.185.0-checksums.sha256
-                  tr -d '\r' < doctl-1.185.0-checksums.sha256 | rg --fixed-strings 'doctl-1.185.0-linux-amd64.tar.gz' | sha256sum --check -
+                  tr -d '\r' < doctl-1.185.0-checksums.sha256 | awk '$2=="doctl-1.185.0-linux-amd64.tar.gz" {print}' | sha256sum --check -
                   tar -xzf doctl-1.185.0-linux-amd64.tar.gz
                   cd "$GITHUB_WORKSPACE"
                   env -u DIGITALOCEAN_ACCESS_TOKEN -u DOCTL_ACCESS_TOKEN "$validator/doctl" --config "$validator/no-auth.yaml" apps spec validate --schema-only .do/app.yaml > /dev/null

@@ -55,18 +55,18 @@ for role in administrator agent; do
     test -n "$session"
     code=$(curl -sS "${headers[@]}" -H "Cookie: deskops-session=$session" -c "$jar" -D "$RUNNER_TEMP/cookie.headers" --data-urlencode "_token=$token" --data-urlencode "role=$role" -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/demo/login)
     test "$code" = 302
-    rg -qi '^set-cookie: deskops-session=.*secure.*httponly.*samesite=lax' "$RUNNER_TEMP/cookie.headers"
+    grep -qi '^set-cookie: deskops-session=.*secure.*httponly.*samesite=lax' "$RUNNER_TEMP/cookie.headers"
     session=$(awk '$6=="deskops-session" {print $7}' "$jar")
     curl -fsS "${headers[@]}" -H "Cookie: deskops-session=$session" http://127.0.0.1:18080/dashboard -o "$page"
-    rg -q 'Tableau de bord' "$page"
+    grep -q 'Tableau de bord' "$page"
     if [ "$role" = administrator ]; then
-        rg -q 'Camille Martin' "$page"
+        grep -q 'Camille Martin' "$page"
         curl -fsS "${headers[@]}" -H "Cookie: deskops-session=$session" http://127.0.0.1:18080/tickets/create -o "$page"
         token=$(sed -n 's/.*name="_token" value="\([^"]*\)".*/\1/p' "$page" | head -n 1)
         code=$(curl -sS "${headers[@]}" -H "Cookie: deskops-session=$session" --data-urlencode "_token=$token" --data-urlencode 'title=Ticket fictif de validation' --data-urlencode 'description=Demande fictive de validation du reset quotidien.' --data-urlencode 'requester_name=Contact fictif' --data-urlencode 'requester_email=contact@deskops.example' -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/tickets)
         test "$code" = 302
     else
-        rg -q 'Alex Bernard' "$page"
+        grep -q 'Alex Bernard' "$page"
     fi
 done
 docker run --rm --network "$network" --env-file "$runtime" deskops-production-test sh .do/reset-demo.sh
