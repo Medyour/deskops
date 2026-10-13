@@ -163,7 +163,7 @@ L’initialisation locale historique par `deskops:demo` exige une table `tickets
 
 Les comptes démo gardent leurs rôles métier ; en mode public, ils accèdent exclusivement aux tickets marqués `is_demo`, aux agents démo et aux activités de ce périmètre. Le serveur dérive ce marqueur du créateur, interdit son assignation par formulaire et empêche toute conversion ultérieure. Rôle, adresse, mot de passe, marqueur et suppression des comptes démo sont protégés en base, y compris via SQL direct. Aucune modification de mot de passe n’est permise, même pendant la maintenance. La récupération/confirmation de mot de passe est indisponible en mode public. Hors de ce mode, la récupération des comptes ordinaires conserve son fonctionnement.
 
-Un bandeau accessible rappelle la nature fictive et partagée des données, leur réinitialisation régulière et l’interdiction d’ajouter des informations personnelles. La commande `deskops:demo-reset` exige le mode public et `--force` en production. Aucun endpoint web de reset, planning ou job externe n’est ajouté. La cadence sera configurée lors d’une future étape d’exploitation.
+Un bandeau accessible rappelle la nature fictive et partagée des données, leur réinitialisation régulière et l’interdiction d’ajouter des informations personnelles. La commande `deskops:demo-reset` exige le mode public et `--force` en production. Aucun endpoint web de reset n’est ajouté. L’App Spec prépare un job natif quotidien à 04:00 Europe/Paris, sans ressource créée ni planning actif avant déploiement manuel.
 
 Le reset prend un verrou de maintenance en base et une réservation transactionnelle du singleton `demo_state`. L’initialisation utilise les mêmes actions métier pour créer 12 tickets, 24 commentaires et 60 activités. Une copie immuable de leurs seules lignes fictives permet de restaurer exactement leur contenu, leurs dates et leurs identifiants. Les ajouts des comptes démo sont supprimés. Aucun utilisateur n’est supprimé et aucune séquence globale n’est réinitialisée. Les accès ne sont ni publiés ni renouvelés ; les sessions démo sont révoquées, et un compteur de génération invalide également les sessions publiques et leurs mutations obsolètes.
 
@@ -181,3 +181,9 @@ La migration ne revendique aucune donnée historique non marquée. Une collision
 6. Recherche, filtres, pagination, états vides et métriques correspondent au contrat.
 7. Recréer la fixture donne les mêmes données et métriques, indépendamment de la date de consultation.
 8. Les parcours restent utilisables au clavier, sur mobile et sans JavaScript ; le contrôle qualité local est vert.
+
+## Préparation de l’exploitation de la démonstration
+
+L’App Spec est préparé pour Londres/LON1, une instance web fixe, une base de développement PostgreSQL 18 et deux jobs natifs. Le job avant déploiement applique les migrations puis restaure la fixture ; son échec bloque la publication. Le reset quotidien est déclaré à 04:00 Europe/Paris, sans planning actif tant que l’application n’est pas créée manuellement. Les jobs utilisent le mode exclusif : une présence de compte ou ticket non-démo fait refuser l’opération, avec nouvelle vérification transactionnelle avant toute restauration. Ils ne reçoivent pas APP_KEY.
+
+Le health check public `/health` vaut 204, ne crée pas de session et n’interroge pas PostgreSQL. Les variables sont injectées au runtime et la configuration n’est jamais cachée au build. Aucun domaine, hébergement actif ou ressource DigitalOcean n’est créé par cette préparation. Les procédures et limites de la base sans sauvegarde sont dans `docs/DIGITALOCEAN_RUNBOOK.md`.
