@@ -1,5 +1,6 @@
 #!/bin/bash
-set -euo pipefail
+set -Eeuo pipefail
+trap 'echo "Production scenario failed at line $LINENO" >&2' ERR
 
 docker run --rm deskops-production-test php -r 'exit(!file_exists(".env") && !file_exists("bootstrap/cache/config.php") && file_exists("public/build/manifest.json") && !is_dir("vendor/pestphp") && PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 3 ? 0 : 1);'
 if docker run --rm deskops-production-test sh .do/start-web.sh; then
@@ -46,17 +47,17 @@ done
 test "$status" = 204
 headers=(-H 'Host: deskops.example' -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-Port: 443')
 for role in administrator agent; do
-    jar="$RUNNER_TEMP/$role.cookies"
+    cookie_headers="$RUNNER_TEMP/$role.headers"
     page="$RUNNER_TEMP/$role.html"
-    curl -fsS "${headers[@]}" -c "$jar" http://127.0.0.1:18080/login -o "$page"
+    curl -fsS "${headers[@]}" -D "$cookie_headers" http://127.0.0.1:18080/login -o "$page"
     token=$(sed -n 's/.*name="_token" value="\([^"]*\)".*/\1/p' "$page" | head -n 1)
-    session=$(awk '$6=="deskops-session" {print $7}' "$jar")
+    session=$(sed -n 's/^Set-Cookie: deskops-session=\([^;]*\).*/\1/ip' "$cookie_headers" | tr -d '\r')
     test -n "$token"
     test -n "$session"
-    code=$(curl -sS "${headers[@]}" -H "Cookie: deskops-session=$session" -c "$jar" -D "$RUNNER_TEMP/cookie.headers" --data-urlencode "_token=$token" --data-urlencode "role=$role" -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/demo/login)
+    code=$(curl -sS "${headers[@]}" -H "Cookie: deskops-session=$session" -D "$cookie_headers" --data-urlencode "_token=$token" --data-urlencode "role=$role" -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/demo/login)
     test "$code" = 302
-    grep -qi '^set-cookie: deskops-session=.*secure.*httponly.*samesite=lax' "$RUNNER_TEMP/cookie.headers"
-    session=$(awk '$6=="deskops-session" {print $7}' "$jar")
+    grep -qi '^set-cookie: deskops-session=.*secure.*httponly.*samesite=lax' "$cookie_headers"
+    session=$(sed -n 's/^Set-Cookie: deskops-session=\([^;]*\).*/\1/ip' "$cookie_headers" | tr -d '\r')
     curl -fsS "${headers[@]}" -H "Cookie: deskops-session=$session" http://127.0.0.1:18080/dashboard -o "$page"
     grep -q 'Tableau de bord' "$page"
     if [ "$role" = administrator ]; then
