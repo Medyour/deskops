@@ -78,3 +78,7 @@ docker exec "$web" apache2ctl -t
 docker pause "$POSTGRES_ID"
 test "$(curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/health)" = 204
 docker unpause "$POSTGRES_ID"
+if docker exec --env APP_KEY= "$web" sh .do/start-web.sh; then
+    echo 'Web restart used a cached key instead of the runtime configuration' >&2
+    exit 1
+fi

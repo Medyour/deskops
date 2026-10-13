@@ -60,6 +60,7 @@ test('deployment and scheduled jobs fail closed and reset only the exclusive dem
     expect($deployment)->toContain("production-check --database --no-interaction\nphp artisan migrate --force --no-interaction\nphp artisan deskops:demo-reset --force --exclusive --no-interaction");
     expect(file_get_contents(base_path('.do/reset-demo.sh')))->toContain('demo-reset --force --exclusive')->not->toContain('migrate ');
     expect(file_get_contents(base_path('.do/start-web.sh')))->toContain('production-check --web', 'config:cache', 'exec apache2-foreground');
+    expect(file_get_contents(base_path('.do/start-web.sh')))->toContain("config:clear --no-interaction\nphp artisan deskops:production-check --web");
 });
 
 test('production image excludes local artifacts pins official images and leaves configuration uncached at build time', function () {
