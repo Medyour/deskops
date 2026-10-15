@@ -46,6 +46,7 @@ for attempt in $(seq 1 30); do
 done
 test "$status" = 204
 headers=(-H 'Host: deskops.example' -H 'X-Forwarded-Proto: https' -H 'X-Forwarded-Port: 443')
+sessions=()
 for role in administrator agent; do
     cookie_headers="$RUNNER_TEMP/$role.headers"
     page="$RUNNER_TEMP/$role.html"
@@ -58,22 +59,29 @@ for role in administrator agent; do
     test "$code" = 302
     grep -qi '^set-cookie: deskops-session=.*secure.*httponly.*samesite=lax' "$cookie_headers"
     session=$(sed -n 's/^Set-Cookie: deskops-session=\([^;]*\).*/\1/ip' "$cookie_headers" | tr -d '\r')
+    sessions+=("$session")
     curl -fsS "${headers[@]}" -H "Cookie: deskops-session=$session" http://127.0.0.1:18080/dashboard -o "$page"
     grep -q 'Tableau de bord' "$page"
     if [ "$role" = administrator ]; then
         grep -q 'Camille Martin' "$page"
         curl -fsS "${headers[@]}" -H "Cookie: deskops-session=$session" http://127.0.0.1:18080/tickets/create -o "$page"
         token=$(sed -n 's/.*name="_token" value="\([^"]*\)".*/\1/p' "$page" | head -n 1)
-        code=$(curl -sS "${headers[@]}" -H "Cookie: deskops-session=$session" --data-urlencode "_token=$token" --data-urlencode 'title=Ticket fictif de validation' --data-urlencode 'description=Demande fictive de validation du reset quotidien.' --data-urlencode 'requester_name=Contact fictif' --data-urlencode 'requester_email=contact@deskops.example' -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/tickets)
+        code=$(curl -sS "${headers[@]}" -H "Cookie: deskops-session=$session" -D "$cookie_headers" --data-urlencode "_token=$token" --data-urlencode 'title=Ticket fictif de validation' --data-urlencode 'description=Demande fictive de validation du reset quotidien.' --data-urlencode 'requester_name=Contact fictif' --data-urlencode 'requester_email=contact@deskops.example' -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/tickets)
         test "$code" = 302
+        location=$(sed -n 's/^Location: //ip' "$cookie_headers" | tr -d '\r')
+        [[ "$location" =~ ^https://deskops\.example/tickets/[0-9]+$ ]]
+        curl -fsS "${headers[@]}" -H "Cookie: deskops-session=$session" "http://127.0.0.1:18080${location#https://deskops.example}" -o "$page"
+        grep -q 'DS-0013' "$page"
     else
         grep -q 'Alex Bernard' "$page"
     fi
 done
 docker run --rm --network "$network" --env-file "$runtime" deskops-production-test sh .do/reset-demo.sh
 docker run --rm --network "$network" --env-file "$runtime" deskops-production-test sh .do/reset-demo.sh
-code=$(curl -sS "${headers[@]}" -H "Cookie: deskops-session=$session" -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/dashboard)
-test "$code" = 302
+for session in "${sessions[@]}"; do
+    code=$(curl -sS "${headers[@]}" -H "Cookie: deskops-session=$session" -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/dashboard)
+    test "$code" = 302
+done
 docker exec "$web" php artisan deskops:production-check --web --ready --no-interaction
 docker exec "$web" apache2ctl -t
 docker pause "$POSTGRES_ID"
