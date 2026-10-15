@@ -13,12 +13,15 @@ class ResetDemo
 {
     public function __construct(private DemoMaintenance $maintenance) {}
 
-    public function execute(): void
+    public function execute(bool $exclusive = false): void
     {
         if (! config('app.demo_mode')) {
             throw new LogicException('Le mode démonstration est désactivé.');
         }
-        $this->maintenance->run(function (): void {
+        $this->maintenance->run(function () use ($exclusive): void {
+            if ($exclusive && (DB::table('users')->whereNull('demo_identity')->exists() || DB::table('tickets')->where('is_demo', false)->exists())) {
+                throw new LogicException('Cette opération exige une base exclusivement dédiée à la démonstration.');
+            }
             $this->ensureAccounts();
             $fixture = DB::table('demo_state')->where('id', 1)->value('fixture');
             if ($fixture === null) {

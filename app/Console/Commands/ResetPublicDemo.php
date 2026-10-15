@@ -9,7 +9,7 @@ use Throwable;
 
 class ResetPublicDemo extends Command
 {
-    protected $signature = 'deskops:demo-reset {--force : Autoriser explicitement la réinitialisation en production}';
+    protected $signature = 'deskops:demo-reset {--force : Autoriser explicitement la réinitialisation en production} {--exclusive : Refuser toute base contenant des comptes ou tickets non-démo}';
 
     protected $description = 'Restaurer exclusivement la fixture identifiée de la démonstration publique';
 
@@ -26,7 +26,7 @@ class ResetPublicDemo extends Command
             return self::FAILURE;
         }
         try {
-            $reset->execute();
+            $reset->execute(exclusive: (bool) $this->option('exclusive'));
         } catch (LogicException $exception) {
             $this->error($exception->getMessage());
 

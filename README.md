@@ -128,7 +128,7 @@ Pour le futur composant de base nommé `deskops-db`, l’application située dan
 
 Conserver intégralement l’URL fournie par DigitalOcean et ses paramètres. Pour cette base de démonstration, le mode attendu est celui de l’URL, généralement `sslmode=require`, qui chiffre la connexion sans imposer une autorité racine absente. Ne pas remplacer ce mode par `verify-full` sans avoir configuré une confiance appropriée.
 
-Cette future base est une **base de développement pour des données fictives**, sans fonctionnalité de sauvegarde intégrée ; elle ne représente pas une base de production sauvegardée. Une exploitation de production demanderait une base gérée et une politique de sauvegarde décidées séparément. [Limites des sauvegardes de développement](https://docs.digitalocean.com/support/how-do-i-back-up-my-dev-database-on-app-platform/). Cette étape documente uniquement le choix : aucun App Spec, composant, hébergement ou base DigitalOcean n’est créé.
+Cette future base est une **base de développement pour des données fictives**, sans fonctionnalité de sauvegarde intégrée ; elle ne représente pas une base de production sauvegardée. Une exploitation de production demanderait une base gérée et une politique de sauvegarde décidées séparément. [Limites des sauvegardes de développement](https://docs.digitalocean.com/support/how-do-i-back-up-my-dev-database-on-app-platform/). L’App Spec est préparé dans `.do/app.yaml`, sans création de composant, d’hébergement ou de base DigitalOcean.
 
 ### Valider les deux moteurs
 
@@ -182,7 +182,15 @@ La valeur du mode est lue exclusivement via `config('app.demo_mode')`. Après mo
 
 Sur une base neuve, les références restent `DS-0001` à `DS-0012`. Sur une base mixte, les séquences existantes sont respectées ; les références initialement attribuées à la fixture sont ensuite conservées lors des resets. Le contenu et les indicateurs déterministes sont identiques. Une ancienne base sans marqueurs reste hors de la démonstration publique ; utiliser une nouvelle base jetable pour ce parcours plutôt que convertir ou effacer des données existantes.
 
-En local, la préparation conserve les accès existants sans les afficher. Pour explorer une nouvelle base, activer explicitement le mode démo et utiliser les boutons. Aucun mot de passe n’est modifiable pour un compte démo, même pendant la maintenance. Le bandeau rappelle que les données sont fictives, partagées et régulièrement réinitialisées. Aucun App Spec, job DigitalOcean ou planning automatique n’est créé ici.
+En local, la préparation conserve les accès existants sans les afficher. Pour explorer une nouvelle base, activer explicitement le mode démo et utiliser les boutons. Aucun mot de passe n’est modifiable pour un compte démo, même pendant la maintenance. Le bandeau rappelle que les données sont fictives, partagées et régulièrement réinitialisées. Le planning quotidien est déclaré dans l’App Spec ; aucune application ni job n’est créé sur DigitalOcean.
+
+## Préparation DigitalOcean, sans déploiement
+
+[.do/app.yaml](.do/app.yaml) décrit Londres/LON1 (`region: lon`), un service PHP 8.3/Apache en 512 MiB, une base de développement PostgreSQL 18 et deux jobs natifs. Budget de base : **12 USD/mois**, hors exécution des jobs et éventuels suppléments. Aucun domaine, autoscaling ou worker.
+
+L’image Docker utilise les lockfiles et des images officielles épinglées. Le build ne reçoit aucun secret et ne crée pas de cache de configuration. `APP_KEY` est absente de l’App Spec : elle sera ajoutée manuellement, chiffrée, au service web uniquement en Run Time. Les jobs refusent toute base contenant des comptes ou tickets non-démo ; le reset exclusif revérifie ce périmètre dans sa transaction.
+
+`GET /health` renvoie 204 sans session ni PostgreSQL. `deskops:production-check` contrôle la configuration ; `--web` exige la clé, `--database` contrôle le périmètre et `--ready` vérifie la fixture intacte après reset. Le [runbook](docs/DIGITALOCEAN_RUNBOOK.md) décrit la création manuelle, les contrôles du devis/VPC, le premier déploiement, les logs, le reset quotidien, le rollback et la destruction. La CI valide le schéma sans jeton DigitalOcean et teste réellement l’image sur un PostgreSQL éphémère. Aucun déploiement n’est effectué.
 
 ## Qualité et CI GitHub Actions
 
@@ -255,6 +263,7 @@ La même suite Feature s’exécute sur les deux moteurs, sans modifier la base 
 5. **Pilotage — livré** : indicateurs testés, répartitions, charge active, file priorisée, créations et activités récentes, liens filtrés et vue personnelle en Blade.
 6. **Compatibilité PostgreSQL 18 — livré** : migrations, protections d’intégrité et suite complète sur deux moteurs, SQLite conservé localement.
 7. **Mode démonstration public — livré** : exploration des deux rôles sans accès publié, comptes protégés, sessions révocables et reset atomique des fixtures explicitement identifiées.
-8. **Finition de la vitrine** : présentation du portfolio et documentation finale ; les choix d’exploitation restent une étape distincte.
+8. **Préparation App Platform — prête pour revue** : App Spec, image de production, jobs natifs, runbook et CI du scénario complet ; aucune ressource créée.
+9. **Finition de la vitrine** : présentation du portfolio et documentation finale ; les choix d’exploitation restent une étape distincte.
 
 Le dépôt GitHub est privé : [`Medyour/deskops`](https://github.com/Medyour/deskops). La CI ne publie aucun site ni artefact de déploiement. Aucun hébergement ou domaine n’est configuré. Le contrat détaillé du MVP fait foi pour les prochaines étapes métier.

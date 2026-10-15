@@ -137,3 +137,47 @@ jobs:
                   APP_ENV=testing APP_DEMO_MODE=false BCRYPT_ROUNDS=4 CACHE_STORE=array MAIL_MAILER=array QUEUE_CONNECTION=sync SESSION_DRIVER=array DB_DATABASE=:memory: php artisan config:cache --no-interaction
                   php artisan route:cache --no-interaction
                   php vendor/bin/pest --compact --order-by=random --random-order-seed=20261011
+
+    production:
+        name: Production image · PostgreSQL 18
+        runs-on: ubuntu-24.04
+        timeout-minutes: 25
+        services:
+            postgres:
+                image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+                env:
+                    POSTGRES_USER: deskops
+                    POSTGRES_DB: deskops_test
+                    POSTGRES_HOST_AUTH_METHOD: trust
+                options: >-
+                    --health-cmd "pg_isready -h 127.0.0.1 -U deskops -d deskops_test"
+                    --health-interval 5s
+                    --health-timeout 5s
+                    --health-retries 30
+        steps:
+            - name: Checkout
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  persist-credentials: false
+
+            - name: Validate App Spec offline with the official CLI
+              run: |
+                  validator="$RUNNER_TEMP/doctl"
+                  mkdir -p "$validator"
+                  cd "$validator"
+                  curl -fsSLO https://github.com/digitalocean/doctl/releases/download/v1.185.0/doctl-1.185.0-linux-amd64.tar.gz
+                  curl -fsSLO https://github.com/digitalocean/doctl/releases/download/v1.185.0/doctl-1.185.0-checksums.sha256
+                  tr -d '\r' < doctl-1.185.0-checksums.sha256 | awk '$2=="doctl-1.185.0-linux-amd64.tar.gz" {print}' | sha256sum --check -
+                  tar -xzf doctl-1.185.0-linux-amd64.tar.gz
+                  cd "$GITHUB_WORKSPACE"
+                  env -u DIGITALOCEAN_ACCESS_TOKEN -u DOCTL_ACCESS_TOKEN "$validator/doctl" --config "$validator/no-auth.yaml" apps spec validate --schema-only .do/app.yaml > /dev/null
+                  for script in .do/*.sh; do sh -n "$script"; done
+                  bash -n tests/production-image.sh
+
+            - name: Build the production artifact without runtime secrets
+              run: docker build --file .do/Dockerfile --tag deskops-production-test .
+
+            - name: Test migrations resets Apache and both demo sessions
+              env:
+                  POSTGRES_ID: ${{ job.services.postgres.id }}
+              run: bash tests/production-image.sh
