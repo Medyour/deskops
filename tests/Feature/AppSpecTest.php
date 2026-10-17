@@ -14,7 +14,7 @@ test('app spec targets a private GitHub source in London with one fixed web inst
     expect($spec['region'])->toBe('lon');
     expect($spec['services'])->toHaveCount(1);
     expect($spec['databases'])->toBe([['name' => 'deskops-db', 'engine' => 'PG', 'version' => '18', 'production' => false]]);
-    expect(array_keys($spec))->not->toContain('domains', 'workers', 'functions', 'envs', 'vpc');
+    expect(array_keys($spec))->not->toContain('workers', 'functions', 'envs', 'vpc');
     $web = $spec['services'][0];
     expect($web['http_port'])->toBe(8080);
     expect($web['health_check']['http_path'])->toBe('/health');
@@ -28,19 +28,83 @@ test('app spec targets a private GitHub source in London with one fixed web inst
     }
 });
 
+test('primary domain and starter domain redirect preserve the original request URI', function () {
+    $spec = digitalOceanSpec();
+
+    expect($spec['domains'])->toBe([
+        ['domain' => 'deskops.mkirchel.com', 'type' => 'PRIMARY'],
+    ])->and($spec['domains'][0])->not->toHaveKey('zone');
+
+    expect($spec['ingress']['rules'])->toHaveCount(2);
+    [$starterDomainRedirect, $webRoute] = $spec['ingress']['rules'];
+
+    expect($starterDomainRedirect['match'])->toBe([
+        'authority' => ['exact' => 'deskops-9f7a8.ondigitalocean.app'],
+        'path' => ['prefix' => '/'],
+    ])->and($starterDomainRedirect['redirect'])->toBe([
+        'authority' => 'deskops.mkirchel.com',
+        'scheme' => 'https',
+        'redirect_code' => 301,
+    ])->and($starterDomainRedirect['redirect'])->not->toHaveKey('uri');
+
+    expect($webRoute)->toBe([
+        'component' => ['name' => 'web'],
+        'match' => ['path' => ['prefix' => '/']],
+    ]);
+});
+
 test('all component variables are runtime only and contain bindings rather than credentials', function () {
     $spec = digitalOceanSpec();
+    $expectedValues = [
+        'APP_NAME' => 'DeskOps',
+        'APP_ENV' => 'production',
+        'APP_DEBUG' => 'false',
+        'APP_DEMO_MODE' => 'true',
+        'APP_URL' => '${APP_URL}',
+        'DB_CONNECTION' => 'pgsql',
+        'DATABASE_URL' => '${deskops-db.DATABASE_PRIVATE_URL}',
+        'CACHE_STORE' => 'database',
+        'SESSION_DRIVER' => 'database',
+        'SESSION_SECURE_COOKIE' => 'true',
+        'SESSION_HTTP_ONLY' => 'true',
+        'SESSION_SAME_SITE' => 'lax',
+        'QUEUE_CONNECTION' => 'sync',
+        'LOG_CHANNEL' => 'stderr',
+        'LOG_LEVEL' => 'warning',
+        'MAIL_MAILER' => 'array',
+        'APP_LOCALE' => 'fr',
+        'APP_FALLBACK_LOCALE' => 'fr',
+        'TRUSTED_PROXIES' => 'REMOTE_ADDR',
+    ];
+
     foreach ([$spec['services'][0], ...$spec['jobs']] as $component) {
         $variables = array_column($component['envs'], null, 'key');
-        expect($variables)->not->toHaveKey('APP_KEY')->not->toHaveKey('DB_PASSWORD')->not->toHaveKey('DB_SSLROOTCERT');
+        expect(array_keys($variables))->toBe(array_keys($expectedValues));
         expect($variables['DATABASE_URL'])->toBe(['key' => 'DATABASE_URL', 'value' => '${deskops-db.DATABASE_PRIVATE_URL}', 'scope' => 'RUN_TIME', 'type' => 'SECRET']);
-        expect($variables['APP_URL']['value'])->toBe('${APP_URL}');
-        foreach (['APP_ENV' => 'production', 'APP_DEBUG' => 'false', 'APP_DEMO_MODE' => 'true', 'DB_CONNECTION' => 'pgsql', 'CACHE_STORE' => 'database', 'SESSION_DRIVER' => 'database', 'QUEUE_CONNECTION' => 'sync', 'LOG_CHANNEL' => 'stderr', 'MAIL_MAILER' => 'array', 'SESSION_SECURE_COOKIE' => 'true', 'SESSION_HTTP_ONLY' => 'true', 'SESSION_SAME_SITE' => 'lax', 'APP_LOCALE' => 'fr', 'TRUSTED_PROXIES' => 'REMOTE_ADDR'] as $key => $value) {
+        foreach ($expectedValues as $key => $value) {
             expect($variables[$key]['value'])->toBe($value);
         }
         expect(array_unique(array_column($component['envs'], 'scope')))->toBe(['RUN_TIME']);
         expect(array_filter($component['envs'], fn (array $variable): bool => $variable['type'] === 'SECRET'))->toHaveCount(1);
     }
+
+    $source = file_get_contents(base_path('.do/app.yaml'));
+    expect($source)
+        ->not->toMatch('/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i')
+        ->not->toMatch('/(?:postgres(?:ql)?|mysql|mariadb|redis):\/\/[^$\s]+/i')
+        ->not->toMatch('/(?:dop_v1_[A-Za-z0-9]{40,}|github_pat_[A-Za-z0-9_]{20,}|gh[oprsu]_[A-Za-z0-9]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/');
+});
+
+test('portable spec leaves the manually selected VPC outside version control', function () {
+    $spec = digitalOceanSpec();
+    $runbook = file_get_contents(base_path('docs/DIGITALOCEAN_RUNBOOK.md'));
+
+    expect($spec)->not->toHaveKey('vpc');
+    expect($runbook)
+        ->toContain('default-lon1')
+        ->toContain('sélectionné manuellement')
+        ->toContain('même VPC')
+        ->toContain('UUID');
 });
 
 test('deployment and scheduled jobs fail closed and reset only the exclusive demo perimeter', function () {
