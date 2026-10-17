@@ -77,8 +77,8 @@ Résultat initial attendu : 3 comptes explicitement démo, 12 tickets, 24 commen
 ## Contrôles après déploiement et logs
 
 1. Consulter Activity : build réussi, `prepare-demo` réussi, service prêt. Consulter les logs de chaque composant via le panneau, sans afficher ses variables d’environnement.
-2. Vérifier `GET /health` sur `https://deskops.mkirchel.com/health` et `https://deskops-9f7a8.ondigitalocean.app/health` : HTTP **204**, corps vide, aucune session ni requête PostgreSQL. C’est un contrôle du serveur HTTP, pas un diagnostic de disponibilité de la base.
-3. Vérifier que l’ancien domaine répond en **301** : `/` doit cibler `https://deskops.mkirchel.com/` et `/tickets?status=open` doit cibler `https://deskops.mkirchel.com/tickets?status=open`.
+2. Vérifier `GET https://deskops.mkirchel.com/health` : HTTP **204**, corps vide, aucune session ni requête PostgreSQL. C’est un contrôle du serveur HTTP, pas un diagnostic de disponibilité de la base.
+3. Vérifier que le domaine DigitalOcean répond en **301** : `/` doit cibler `https://deskops.mkirchel.com/`, `/health` doit cibler `https://deskops.mkirchel.com/health` et `/tickets?status=open` doit cibler `https://deskops.mkirchel.com/tickets?status=open`. En suivant la redirection de `/health`, la réponse finale doit être 204.
 4. Ouvrir la connexion et utiliser les deux boutons d’exploration. Vérifier rôle administrateur/agent, bandeau fictif, navigation et cookies Secure/HTTP-only/SameSite=lax. Aucun mot de passe à chercher ou publier.
 5. Vérifier le tableau de bord administrateur : 12 total, 9 actifs, 3 non assignés actifs, 3 priorités Haute/Urgente actives, 1 urgent actif, 3 terminés et 5 dans « À traiter ». Pour Alex Bernard : 5 tickets assignés, 3 actifs, 2 terminés et aucun non assigné.
 6. Ajouter uniquement un commentaire fictif, vérifier sa persistance PostgreSQL et sa présence dans la chronologie, puis laisser le reset quotidien restaurer la fixture.
