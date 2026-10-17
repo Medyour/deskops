@@ -14,7 +14,7 @@ test('app spec targets a private GitHub source in London with one fixed web inst
     expect($spec['region'])->toBe('lon');
     expect($spec['services'])->toHaveCount(1);
     expect($spec['databases'])->toBe([['name' => 'deskops-db', 'engine' => 'PG', 'version' => '18', 'production' => false]]);
-    expect(array_keys($spec))->not->toContain('domains', 'workers', 'functions', 'envs', 'vpc');
+    expect(array_keys($spec))->not->toContain('workers', 'functions', 'envs', 'vpc');
     $web = $spec['services'][0];
     expect($web['http_port'])->toBe(8080);
     expect($web['health_check']['http_path'])->toBe('/health');
@@ -26,6 +26,31 @@ test('app spec targets a private GitHub source in London with one fixed web inst
         expect($component['instance_size_slug'])->toBe('apps-s-1vcpu-0.5gb');
         expect($component['instance_count'])->toBe(1);
     }
+});
+
+test('primary domain and starter domain redirect preserve the original request URI', function () {
+    $spec = digitalOceanSpec();
+
+    expect($spec['domains'])->toBe([
+        ['domain' => 'deskops.mkirchel.com', 'type' => 'PRIMARY'],
+    ])->and($spec['domains'][0])->not->toHaveKey('zone');
+
+    expect($spec['ingress']['rules'])->toHaveCount(2);
+    [$starterDomainRedirect, $webRoute] = $spec['ingress']['rules'];
+
+    expect($starterDomainRedirect['match'])->toBe([
+        'authority' => ['exact' => 'deskops-9f7a8.ondigitalocean.app'],
+        'path' => ['prefix' => '/'],
+    ])->and($starterDomainRedirect['redirect'])->toBe([
+        'authority' => 'deskops.mkirchel.com',
+        'scheme' => 'https',
+        'redirect_code' => 301,
+    ])->and($starterDomainRedirect['redirect'])->not->toHaveKey('uri');
+
+    expect($webRoute)->toBe([
+        'component' => ['name' => 'web'],
+        'match' => ['path' => ['prefix' => '/']],
+    ]);
 });
 
 test('all component variables are runtime only and contain bindings rather than credentials', function () {
@@ -41,6 +66,18 @@ test('all component variables are runtime only and contain bindings rather than 
         expect(array_unique(array_column($component['envs'], 'scope')))->toBe(['RUN_TIME']);
         expect(array_filter($component['envs'], fn (array $variable): bool => $variable['type'] === 'SECRET'))->toHaveCount(1);
     }
+});
+
+test('portable spec leaves the manually selected VPC outside version control', function () {
+    $spec = digitalOceanSpec();
+    $runbook = file_get_contents(base_path('docs/DIGITALOCEAN_RUNBOOK.md'));
+
+    expect($spec)->not->toHaveKey('vpc');
+    expect($runbook)
+        ->toContain('default-lon1')
+        ->toContain('sélectionné manuellement')
+        ->toContain('même VPC')
+        ->toContain('UUID');
 });
 
 test('deployment and scheduled jobs fail closed and reset only the exclusive demo perimeter', function () {

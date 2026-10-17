@@ -2,6 +2,9 @@
 # London (LON1) is the App Platform region slug "lon".
 name: deskops
 region: lon
+domains:
+    - domain: deskops.mkirchel.com
+      type: PRIMARY
 services:
     - name: web
       github:
@@ -285,6 +288,15 @@ databases:
       production: false
 ingress:
     rules:
+        - match:
+              authority:
+                  exact: deskops-9f7a8.ondigitalocean.app
+              path:
+                  prefix: /
+          redirect:
+              authority: deskops.mkirchel.com
+              scheme: https
+              redirect_code: 301
         - component:
               name: web
           match:
